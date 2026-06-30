@@ -1,0 +1,41 @@
+{
+	"$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+	"name": "io.github.nirholas/pumpfun-solana-mcp",
+	"title": "pump.fun Solana Data",
+	"description": "Free, read-only pump.fun + Solana MCP: token discovery, on-chain analysis, SNS, 3D snapshots.",
+	"websiteUrl": "https://three.ws",
+	"icons": [
+		{
+			"src": "https://three.ws/three-ws-mcp-icon.svg",
+			"mimeType": "image/svg+xml",
+			"sizes": [
+				"any"
+			]
+		}
+	],
+	"repository": {
+		"url": "https://github.com/nirholas/pumpfun-mcp",
+		"source": "github"
+	},
+	"version": "0.2.1",
+	"packages": [
+		{
+			"registryType": "npm",
+			"identifier": "@three-ws/pumpfun-mcp",
+			"version": "0.2.1",
+			"runtimeHint": "npx",
+			"transport": {
+				"type": "stdio"
+			},
+			"environmentVariables": [
+				{
+					"name": "PUMPFUN_MCP_URL",
+					"description": "Override the canonical pump.fun MCP backend endpoint. Defaults to https://three.ws/api/pump-fun-mcp — set this only when self-hosting the handler.",
+					"format": "string",
+					"isRequired": false,
+					"default": "https://three.ws/api/pump-fun-mcp"
+				}
+			]
+		}
+	]
+}

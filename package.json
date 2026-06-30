@@ -1,0 +1,57 @@
+{
+	"name": "@three-ws/pumpfun-mcp",
+	"version": "0.2.1",
+	"description": "Free, read-only pump.fun + Solana MCP server — token discovery, on-chain bonding-curve & holder analysis, creator fee-claim tracking, SNS resolution, KOL signals, and swap quotes. No API keys.",
+	"type": "module",
+	"author": "nirholas",
+	"license": "SEE LICENSE IN LICENSE",
+	"homepage": "https://three.ws",
+	"mcpName": "io.github.nirholas/pumpfun-solana-mcp",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/nirholas/pumpfun-mcp.git"
+	},
+	"bugs": {
+		"url": "https://github.com/nirholas/three.ws/issues"
+	},
+	"keywords": [
+		"mcp",
+		"model-context-protocol",
+		"pump.fun",
+		"pumpfun",
+		"solana",
+		"memecoin",
+		"bonding-curve",
+		"sns",
+		"solana-name-service",
+		"ai-agent",
+		"three.ws"
+	],
+	"publishConfig": {
+		"access": "public"
+	},
+	"files": [
+		"src",
+		"server.json",
+		"README.md",
+		"LICENSE"
+	],
+	"bin": {
+		"pumpfun-mcp": "src/index.js"
+	},
+	"main": "./src/index.js",
+	"exports": {
+		".": "./src/index.js"
+	},
+	"engines": {
+		"node": ">=20"
+	},
+	"scripts": {
+		"start": "node src/index.js",
+		"test": "node --test \"test/**/*.test.mjs\"",
+		"inspect": "npx -y @modelcontextprotocol/inspector node src/index.js"
+	},
+	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.29.0"
+	}
+}
