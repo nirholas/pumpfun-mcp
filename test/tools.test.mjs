@@ -7,6 +7,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 
 import { FALLBACK_TOOLS, TOOL_ANNOTATIONS } from '../src/tools.js';
 import { NATIVE_TOOLS } from '../src/native.js';
@@ -143,4 +144,32 @@ test('native composed tools carry the same annotation contract', () => {
 		assert.equal(typeof a.idempotentHint, 'boolean', `${def.name}: idempotentHint boolean`);
 		assert.equal(typeof a.openWorldHint, 'boolean', `${def.name}: openWorldHint boolean`);
 	}
+});
+
+// The MCP registry rejects a server.json whose declared version disagrees with
+// the npm package it points at, and npm rejects a republish of an existing
+// version. Both have bitten this package: npm reached 0.2.3 while package.json
+// still read 0.2.1, because publish-time bumps were never committed back. That
+// left the repo unable to publish and misreporting what was live.
+test('server.json and package.json declare the same version', async () => {
+	const [pkg, server] = await Promise.all([
+		readFile(new URL('../package.json', import.meta.url), 'utf8').then(JSON.parse),
+		readFile(new URL('../server.json', import.meta.url), 'utf8').then(JSON.parse),
+	]);
+
+	assert.equal(server.version, pkg.version, 'server.json version must track package.json');
+
+	const npmEntry = server.packages?.find(
+		(p) => p.registryType === 'npm' && p.identifier === pkg.name,
+	);
+	assert.ok(npmEntry, `server.json must carry an npm package entry for ${pkg.name}`);
+	assert.equal(
+		npmEntry.version,
+		pkg.version,
+		'server.json packages[].version must track package.json',
+	);
+
+	// mcpName is what ties the npm package to its registry identity; a mismatch
+	// publishes an orphaned registry entry that resolves to nothing.
+	assert.equal(pkg.mcpName, server.name, 'package.json mcpName must equal server.json name');
 });

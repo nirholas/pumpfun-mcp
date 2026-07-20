@@ -17,12 +17,12 @@
 		"url": "https://github.com/nirholas/pumpfun-mcp",
 		"source": "github"
 	},
-	"version": "0.2.1",
+	"version": "0.2.4",
 	"packages": [
 		{
 			"registryType": "npm",
 			"identifier": "@three-ws/pumpfun-mcp",
-			"version": "0.2.1",
+			"version": "0.2.4",
 			"runtimeHint": "npx",
 			"transport": {
 				"type": "stdio"
