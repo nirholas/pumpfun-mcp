@@ -68,6 +68,68 @@ test('semantic spot checks: deterministic and local-compute tools', () => {
 	assert.equal(TOOL_ANNOTATIONS.pumpfun_vanity_mint.openWorldHint, false);
 });
 
+// Any outputSchema this bridge advertises is a contract the client validates
+// structuredContent against. A `required` entry with no matching property is a
+// schema that can never be satisfied, so it must be caught here, not in a client.
+test('declared outputSchemas are internally consistent', () => {
+	const withSchema = FALLBACK_TOOLS.filter((t) => t.outputSchema);
+	assert.ok(withSchema.length > 0, 'expected at least one tool to declare an outputSchema');
+	for (const tool of withSchema) {
+		const s = tool.outputSchema;
+		assert.equal(s.type, 'object', `${tool.name}: outputSchema.type`);
+		assert.ok(s.properties && typeof s.properties === 'object', `${tool.name}: properties`);
+		for (const key of s.required || []) {
+			assert.ok(
+				Object.hasOwn(s.properties, key),
+				`${tool.name}: required "${key}" has no property definition`,
+			);
+			assert.equal(
+				typeof s.properties[key].type,
+				'string',
+				`${tool.name}: property "${key}" needs a type`,
+			);
+		}
+	}
+});
+
+// A pump.fun coin is priced by the bonding curve before graduation and by the
+// PumpSwap pool after it. Both accounts now carry a field spelled
+// virtual_quote_reserves, and they are NOT the same quantity. These tools are
+// read by a model with no human in the loop, so each pricing tool has to say
+// which account it reads. Dropping that wording is a real regression: it lets a
+// caller apply pool math to curve reserves (or vice versa) and get a confidently
+// wrong price with no error anywhere.
+const byName = (name) => {
+	const tool = FALLBACK_TOOLS.find((t) => t.name === name);
+	assert.ok(tool, `${name}: missing from FALLBACK_TOOLS`);
+	return tool;
+};
+
+test('get_bonding_curve documents the renamed quote-side curve fields', () => {
+	const tool = byName('get_bonding_curve');
+	assert.match(tool.description, /bonding[- ]curve account/i);
+	assert.match(tool.description, /virtual_quote_reserves/);
+	// The rename is the trap: a decoder still reading virtual_sol_reserves gets
+	// undefined, which coerces to a 0 price rather than throwing.
+	assert.match(tool.description, /virtual_sol_reserves/);
+	// Reserve fields must name their on-chain source so the rename is traceable.
+	const props = tool.outputSchema.properties;
+	assert.match(props.solReserves.description, /real_quote_reserves/);
+	assert.match(props.virtualSolReserves.description, /virtual_quote_reserves/);
+});
+
+test('pumpfun_quote_swap documents pricing against effective quote reserves', () => {
+	const tool = byName('pumpfun_quote_swap');
+	// effective = vault balance + pool.virtual_quote_reserves.
+	assert.match(tool.description, /effective/i);
+	assert.match(tool.description, /pool\.virtual_quote_reserves/);
+	assert.match(tool.description, /pool_quote_token_account\.amount/);
+	// The base side is explicitly unchanged upstream, so the description says so.
+	// Without it, a reader may "symmetrically" add a virtual figure to the base.
+	assert.match(tool.description, /pool_base_token_account\.amount/);
+	assert.match(tool.outputSchema.properties.priceImpactBps.description, /effective quote reserve/i);
+});
+
 test('native composed tools carry the same annotation contract', () => {
 	assert.ok(NATIVE_TOOLS.length > 0);
 	const fallbackNames = new Set(FALLBACK_TOOLS.map((t) => t.name));

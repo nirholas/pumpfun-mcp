@@ -80,7 +80,7 @@ All tools are **read-only** — nothing signs or sends a transaction. `pumpfun_q
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `search_tokens`             | Search pump.fun tokens by name, symbol, or mint.                                                                                                                                                                                                                                      |
 | `get_token_details`          | Full metadata for a mint.                                                                                                                                                                                                                                                             |
-| `get_bonding_curve`          | Real/virtual reserves + graduation progress (on-chain).                                                                                                                                                                                                                               |
+| `get_bonding_curve`          | Real/virtual quote reserves + graduation progress for a coin still on the curve (on-chain).                                                                                                                                                                                            |
 | `get_token_trades`           | Recent buy/sell history for a token.                                                                                                                                                                                                                                                  |
 | `get_trending_tokens`        | Top tokens by market cap.                                                                                                                                                                                                                                                             |
 | `get_new_tokens`             | Most recently launched tokens.                                                                                                                                                                                                                                                        |
@@ -93,7 +93,7 @@ All tools are **read-only** — nothing signs or sends a transaction. `pumpfun_q
 | `pumpfun_list_claims`      | Recent creator fee-claim events (on-chain).                                                                                                                                                                                                                                           |
 | `pumpfun_watch_claims`     | Fee claims for a creator within a look-back window.                                                                                                                                                                                                                                   |
 | `pumpfun_first_claims`     | First-ever creator claims — a cash-out signal.                                                                                                                                                                                                                                        |
-| `pumpfun_quote_swap`       | Read-only pump.fun AMM swap quote (no signing).                                                                                                                                                                                                                                       |
+| `pumpfun_quote_swap`       | Read-only PumpSwap AMM swap quote for a graduated coin (no signing).                                                                                                                                                                                                                   |
 | `pumpfun_watch_whales`     | Collect large trades on a token over a short window.                                                                                                                                                                                                                                  |
 | `pumpfun_vanity_mint`      | Grind a vanity Solana keypair (secret returned to caller, never stored).                                                                                                                                                                                                              |
 | `sns_resolve`              | Resolve a `.sol` domain to its owner wallet.                                                                                                                                                                                                                                          |
@@ -103,6 +103,24 @@ All tools are **read-only** — nothing signs or sends a transaction. `pumpfun_q
 | `pumpfun_token_3d`         | **Live 3D snapshot** of a token — composes metadata, holders, and graduation into a shareable [three.ws/coin3d](https://three.ws/coin3d) viewer (spinning coin medallion + holder galaxy + graduation ring) and returns the deep-link, an embeddable iframe, and the underlying data. |
 
 The live tool list is fetched from the backend at startup; a bundled copy ships as an offline fallback so a fresh install always advertises a correct surface.
+
+### How prices are derived
+
+A pump.fun coin has two lifetimes, priced by two different on-chain accounts. Every tool here belongs to exactly one of them, and reading a number from the wrong one is the classic way to get a confidently wrong answer.
+
+**Before graduation: the pump program `BondingCurve` account.** Spot price is `virtual_quote_reserves / virtual_token_reserves`. Those quote-side fields were renamed upstream (`virtual_sol_reserves` → `virtual_quote_reserves`, `real_sol_reserves` → `real_quote_reserves`) when a non-SOL quote asset became possible, and the curve gained a `quote_mint`, which is the SOL default on every coin created to date. The rename is the same u64 at the same offset, so the response fields `virtualSolReserves` / `solReserves` keep their names and stay SOL-denominated. Served by `get_bonding_curve` and `social_x_post_impact`.
+
+**After graduation: the PumpSwap (`pump_amm`) `Pool` account.** Quotes price against the **effective** quote reserve:
+
+```
+effective_quote_reserves = pool_quote_token_account.amount + pool.virtual_quote_reserves
+```
+
+`pool.virtual_quote_reserves` is an appended `Pool` field that carries a non-zero value on launchpad coins from 2026-07-20; on every other pool it is `0` and the effective reserve equals the vault balance exactly. Buys and sells both price on the effective figure, and `priceImpactBps` measures execution against the spot price it implies, so virtual liquidity reads as depth rather than as impact. The **base** side is unchanged: still the raw `pool_base_token_account.amount`. Served by `pumpfun_quote_swap`.
+
+The two `virtual_quote_reserves` are different fields on different accounts that happen to share a name. A coin has one or the other, never both. If `get_bonding_curve` returns `complete: true`, stop reading the curve and quote the pool.
+
+Upstream reference: [pump-public-docs](https://github.com/pump-fun/pump-public-docs#pumpswap-update-virtual-quote-reserves).
 
 ### Inspect the tools
 
