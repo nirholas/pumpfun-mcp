@@ -102,6 +102,15 @@ All tools are **read-only** — nothing signs or sends a transaction. `pumpfun_q
 | `social_x_post_impact`     | Correlate an X post to bonding-curve price impact.                                                                                                                                                                                                                                    |
 | `pumpfun_token_3d`         | **Live 3D snapshot** of a token — composes metadata, holders, and graduation into a shareable [three.ws/coin3d](https://three.ws/coin3d) viewer (spinning coin medallion + holder galaxy + graduation ring) and returns the deep-link, an embeddable iframe, and the underlying data. |
 
+### Claim-data safety
+
+A GitHub social-fee withdrawal is real on-chain activity, but it does not by
+itself prove that the GitHub identity created, owns, or endorses a coin. Clients
+should preserve upstream attribution statuses: `verified_repository`,
+`verified_creator_wallet`, `identity_mismatch`, `unverified`, and
+`unresolved_pooled`. Never choose a primary CA for a shared-PDA withdrawal by
+market cap, and do not treat “first-ever” for a fee account as a per-coin fact.
+
 The live tool list is fetched from the backend at startup; a bundled copy ships as an offline fallback so a fresh install always advertises a correct surface.
 
 ### How prices are derived
