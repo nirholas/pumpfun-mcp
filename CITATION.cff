@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: If you use this software, please cite it as below.
+title: "@three-ws/pumpfun-mcp"
+abstract: "Free, read-only pump.fun + Solana MCP server — token discovery, on-chain bonding-curve & holder analysis, creator fee-claim tracking, SNS resolution, KOL signals, and swap quotes. No API keys."
+version: 0.2.7
+license: Apache-2.0
+repository-code: "https://github.com/nirholas/pumpfun-mcp"
+url: "https://three.ws"
+authors:
+  - name: three.ws
+    website: "https://three.ws"

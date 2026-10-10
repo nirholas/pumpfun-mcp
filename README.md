@@ -1,0 +1,242 @@
+<p align="center">
+  <a href="https://three.ws"><img src="https://three.ws/three-ws-mcp-icon.svg" alt="three.ws" width="88" height="88"></a>
+</p>
+
+<h1 align="center">@three-ws/pumpfun-mcp</h1>
+
+<p align="center"><strong>Free, read-only pump.fun + Solana MCP server — token discovery, on-chain analysis, and live 3D snapshots. No API keys.</strong></p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/@three-ws/pumpfun-mcp"><img alt="npm" src="https://img.shields.io/npm/v/@three-ws/pumpfun-mcp?logo=npm&color=cb3837"></a>
+  <a href="https://www.npmjs.com/package/@three-ws/pumpfun-mcp"><img alt="downloads" src="https://img.shields.io/npm/dm/@three-ws/pumpfun-mcp?color=cb3837"></a>
+  <img alt="license" src="https://img.shields.io/npm/l/@three-ws/pumpfun-mcp?color=3b82f6">
+  <a href="https://registry.modelcontextprotocol.io/?q=io.github.nirholas"><img alt="MCP Registry" src="https://img.shields.io/badge/MCP%20Registry-io.github.nirholas-7c3aed"></a>
+  <img alt="node" src="https://img.shields.io/node/v/@three-ws/pumpfun-mcp?color=339933&logo=node.js">
+  <a href="https://three.ws"><img alt="three.ws" src="https://img.shields.io/badge/built%20by-three.ws-000"></a>
+</p>
+
+<p align="center">
+  <a href="#install">Install</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#tools">Tools</a> ·
+  <a href="#configuration">Configuration</a> ·
+  <a href="https://three.ws">three.ws</a>
+</p>
+
+---
+
+> A free, read-only [Model Context Protocol](https://modelcontextprotocol.io) server for **pump.fun** and **Solana**. It gives Claude — or any MCP client — live token discovery, on-chain bonding-curve and holder analysis, creator fee-claim tracking, Solana Name Service resolution, KOL signals, read-only swap quotes, and shareable live 3D token snapshots. Every Solana RPC and pump.fun API call runs server-side on the canonical [three.ws](https://three.ws) backend, so the data is live and on-chain while the client stays zero-config: **no API keys, no RPC URL, no wallet.**
+
+## Install
+
+### Claude Code (one-liner)
+
+```bash
+claude mcp add pumpfun -- npx -y @three-ws/pumpfun-mcp
+```
+
+### Claude Desktop / Cursor / any MCP client
+
+Add to your MCP config (`claude_desktop_config.json`, `.cursor/mcp.json`, `.mcp.json`, etc.):
+
+```json
+{
+	"mcpServers": {
+		"pumpfun": {
+			"command": "npx",
+			"args": ["-y", "@three-ws/pumpfun-mcp"]
+		}
+	}
+}
+```
+
+Restart the client and the pump.fun tools appear. No install step required.
+
+### Run directly
+
+```bash
+npx -y @three-ws/pumpfun-mcp
+# or install globally and run the bin
+npm i -g @three-ws/pumpfun-mcp && pumpfun-mcp
+```
+
+## Quick start
+
+The server speaks stdio JSON-RPC — your MCP client spawns it via the `npx` command above. Once configured, ask your client natural-language questions and it picks the right tool:
+
+```text
+"What's trending on pump.fun right now?"        → get_trending_tokens
+"Show the bonding curve for <mint>"             → get_bonding_curve
+"Who are the top holders of <mint>?"            → get_token_holders
+"Resolve bonfida.sol"                           → sns_resolve
+"Build a 3D snapshot for <mint>"                → pumpfun_token_3d
+```
+
+## Tools
+
+All tools are **read-only** — nothing signs or sends a transaction. `pumpfun_quote_swap` only quotes; `pumpfun_vanity_mint` returns a keypair for you to use yourself.
+
+**Six tools are indexer-gated.** `search_tokens`, `get_trending_tokens`, `get_new_tokens`, `get_graduated_tokens`, `get_king_of_the_hill`, and `get_creator_profile` need a pump.fun indexer (`PUMPFUN_BOT_URL`). The hosted endpoint at `three.ws/api/pump-fun-mcp` has none configured, so it filters those six out of `tools/list` and they will not appear when you connect to it; set the env var on your own deployment and they return with no code change. Everything else, including `get_token_trades`, works off on-chain data with no indexer. Call `pumpfun_bot_status` to see which side you are on. Note that without the indexer `get_token_details` returns SPL account facts only (`name`, `symbol`, and `uri` come back `null`).
+
+The hosted endpoint also serves three tools the table below does not list: `get_coin_intel`, `get_oracle_conviction`, and `pumpfun_upload_metadata`.
+
+| Tool                       | What it does                                                                                                                                                                                                                                                                          |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `search_tokens`             | Search pump.fun tokens by name, symbol, or mint.                                                                                                                                                                                                                                      |
+| `get_token_details`          | Full metadata for a mint.                                                                                                                                                                                                                                                             |
+| `get_bonding_curve`          | Real/virtual quote reserves + graduation progress for a coin still on the curve (on-chain). A v3 buy that empties the curve finishes through a synthetic migration.                                                                                                                                                                                            |
+| `get_token_trades`           | Recent buy/sell history for a token.                                                                                                                                                                                                                                                  |
+| `get_trending_tokens`        | Top tokens by market cap.                                                                                                                                                                                                                                                             |
+| `get_new_tokens`             | Most recently launched tokens.                                                                                                                                                                                                                                                        |
+| `get_graduated_tokens`       | Tokens that graduated to their PumpSwap pool.                                                                                                                                                                                                                                             |
+| `get_king_of_the_hill`         | Highest-cap token still on the bonding curve.                                                                                                                                                                                                                                         |
+| `get_token_holders`          | Top holders with concentration analysis (on-chain).                                                                                                                                                                                                                                   |
+| `get_creator_profile`        | A creator's tokens with rug-pull risk flags.                                                                                                                                                                                                                                          |
+| `kol_leaderboard`          | Top KOL traders ranked by P&L for a 24h/7d/30d window.                                                                                                                                                                                                                                |
+| `pumpfun_list_claims`      | Recent creator fee-claim events (on-chain). Fees from v3 curve / v2 pool trades appear once swept.                                                                                                                                                                                                                                           |
+| `pumpfun_watch_claims`     | Fee claims for a creator within a look-back window.                                                                                                                                                                                                                                   |
+| `pumpfun_first_claims`     | First-ever creator claims — a cash-out signal.                                                                                                                                                                                                                                        |
+| `pumpfun_quote_swap`       | Read-only PumpSwap AMM swap quote for a graduated coin (no signing). Prices on vault + signed, often negative, `virtual_quote_reserves`.                                                                                                                                                                                                                   |
+| `pumpfun_watch_whales`     | Collect large trades on a token over a short window.                                                                                                                                                                                                                                  |
+| `pumpfun_vanity_mint`      | Grind a vanity Solana keypair (secret returned to caller, never stored).                                                                                                                                                                                                              |
+| `sns_resolve`              | Resolve a `.sol` domain to its owner wallet.                                                                                                                                                                                                                                          |
+| `sns_reverseLookup`        | Reverse-lookup a wallet to its primary `.sol` domain.                                                                                                                                                                                                                                 |
+| `social_cashtag_sentiment` | Deterministic lexicon sentiment over supplied posts.                                                                                                                                                                                                                                  |
+| `social_x_post_impact`     | Correlate an X post to bonding-curve price impact.                                                                                                                                                                                                                                    |
+| `pumpfun_bot_status`       | Configuration + health of the pump.fun indexer backend — `configured`, `healthy`, and ping latency. Always available.                                                                                                                                                                 |
+| `pumpfun_token_3d`         | **Live 3D snapshot** of a token — composes metadata, holders, and graduation into a shareable [three.ws/coin3d](https://three.ws/coin3d) viewer (spinning coin medallion + holder galaxy + graduation ring) and returns the deep-link, an embeddable iframe, and the underlying data. |
+
+The live tool list is fetched from the backend at startup; a bundled copy ships as an offline fallback so a fresh install always advertises a correct surface.
+
+### How prices are derived
+
+A pump.fun coin has two lifetimes, priced by two different on-chain accounts. Every tool here belongs to exactly one of them, and reading a number from the wrong one is the classic way to get a confidently wrong answer.
+
+**Before graduation: the pump program `BondingCurve` account.** Spot price is `virtual_quote_reserves / virtual_token_reserves`. Those quote-side fields were renamed upstream (`virtual_sol_reserves` → `virtual_quote_reserves`, `real_sol_reserves` → `real_quote_reserves`) when a non-SOL quote asset became possible, and the curve gained a `quote_mint`, which is the SOL default on every coin created to date. The rename is the same u64 at the same offset, so the response fields `virtualSolReserves` / `solReserves` keep their names and stay SOL-denominated. Served by `get_bonding_curve` and `social_x_post_impact`.
+
+**After graduation: the PumpSwap (`pump_amm`) `Pool` account.** Quotes price against the **effective** quote reserve:
+
+```
+effective_quote_reserves = pool_quote_token_account.amount + pool.virtual_quote_reserves
+```
+
+`pool.virtual_quote_reserves` is an appended `Pool` field, a **signed** `i128`. A positive value adds depth held outside the vault. Since 2026-09-30 it is commonly **negative**: the PumpSwap v2 trades (`buy_v2`, `sell_v2`, `buy_exact_quote_in_v2`) and `multi_hop_swap` keep the protocol and creator fee inside the quote vault until a sweep pays them out, and subtract that amount here so waiting fees never count as liquidity. So `quote_reserve` alone overstates depth, `effective_quote_reserve` can sit below it, and the program guarantees the sum is never negative. Read the field as a signed integer: never unsigned, never clamped to `0`, never absolute-valued. Pools created before the field existed read it as `0`. Buys and sells both price on the effective figure, and `priceImpactBps` measures execution against the spot price it implies, so virtual liquidity reads as depth rather than as impact. The **base** side is unchanged: still the raw `pool_base_token_account.amount`. Served by `pumpfun_quote_swap`.
+
+The two `virtual_quote_reserves` are different fields on different accounts that happen to share a name. A coin has one or the other, never both. If `get_bonding_curve` returns `complete: true`, stop reading the curve and quote the pool.
+
+**The handoff: synthetic migration.** A v3 bonding-curve buy (`buy_v3`, `buy_exact_quote_in_v3`) that empties the curve has no max size. It takes what the curve has left at the curve price, completes the curve, and buys the rest at the price the PumpSwap pool will open with, so a large final buy is not capped at `realTokenReserves`. Mayhem coins are excluded. After that buy every curve trade fails until the migration lands. Off-chain quoting uses `getBuyV3QuoteAmountFromTokenAmount` / `getBuyV3TokenAmountFromQuoteAmount` from `@pump-fun/pump-sdk` 4.0.0 with `curveBaseTokenBalance` from `fetchBuyState`.
+
+**Creator fees wait until swept.** The v3 curve trades and v2 pool trades do not pay the creator fee out per trade; it waits on the curve (`BondingCurve.creator_fee`) and pool (`Pool.creator_fees`) until a `sweep_creator_fee` moves it to the creator vault, normally right before the claim in the same transaction. The claim tools report claimed amounts, so fees still waiting on the curve or pool appear in no claim until they are swept.
+
+Upstream reference: [pump-public-docs](https://github.com/pump-fun/pump-public-docs), in particular `NEGATIVE_VIRTUAL_QUOTE_RESERVES.md`, `SYNTHETIC_MIGRATION.md` and `instructions/SWEEP_FEES.md`.
+
+### Inspect the tools
+
+```bash
+npx -y @modelcontextprotocol/inspector npx @three-ws/pumpfun-mcp
+```
+
+## Examples
+
+Runnable examples live in [`examples/`](./examples):
+
+```bash
+node examples/list-tools.mjs     # every tool the backend currently serves, with schemas
+node examples/token-report.mjs   # live on-chain report for one mint
+```
+
+Both spawn this server over stdio and read live Solana mainnet data. Every tool
+here is free and read-only. See [`examples/README.md`](./examples/README.md) for
+expected output, including why the advertised tool count depends on whether the
+backend has an indexer configured.
+
+## Configuration
+
+No configuration is required. One optional override exists:
+
+| Env var           | Default                             | Purpose                                                   |
+| ----------------- | ----------------------------------- | --------------------------------------------------------- |
+| `PUMPFUN_MCP_URL` | `https://three.ws/api/pump-fun-mcp` | Backend endpoint. Override only to self-host the handler. |
+
+## How it works
+
+This package is a small stdio ↔ HTTP bridge. It forwards MCP `tools/call` requests to the canonical three.ws pump.fun JSON-RPC backend, which performs the actual Solana RPC reads and pump.fun API queries. That keeps one authoritative implementation, ships no secrets to clients, and means the tool surface stays current automatically.
+
+`pumpfun_token_3d` is a **native** tool: it runs in-process, orchestrating several backend reads (metadata + bonding curve + holders) and resolving the token logo from its on-chain metadata URI, then returns a deep-link into the three.ws 3D viewer. It needs no extra keys and adds no new backend dependency.
+
+## Errors
+
+Failures surface as MCP tool errors (`isError: true`) with the real cause — never a silent empty result:
+
+| Error text | Meaning | Recovery |
+| ---------- | ------- | -------- |
+| `Backend request failed: …` | The bridge could not reach the backend (network, non-2xx, bad JSON). | Check connectivity / `PUMPFUN_MCP_URL`; safe to retry. |
+| `[-32602] …` | Invalid argument (e.g. `pumpfun_token_3d` without a `mint`). | Fix the argument named in the message. |
+| `[-32004] no on-chain data for <mint>: …` | `pumpfun_token_3d` found no metadata, curve, or holder data for the mint. | Verify the mint address and network (`mainnet`/`devnet`). |
+| `[<code>] <message>` | Any other backend JSON-RPC error (unknown tool, indexer unavailable, on-chain read failure), passed through verbatim. | The message states the upstream cause; transient indexer errors are safe to retry. |
+
+`pumpfun_token_3d` degrades gracefully: if only some of its three source reads succeed it still returns a snapshot, marking the missing parts (`no holder data available`, `no bonding-curve data available`) — it errors only when all three fail.
+
+## Requirements
+
+- Node.js **>= 20** (from `engines`).
+- No API keys, RPC URL, or wallet. Outbound HTTPS to the three.ws backend (or your `PUMPFUN_MCP_URL`).
+
+## Related
+
+- [`@three-ws/mcp-server`](https://www.npmjs.com/package/@three-ws/mcp-server) — the paid, x402-settled three.ws MCP (text→3D mesh, avatars, pose seeds, ERC-8004 reputation, and a paid `pump_snapshot`).
+
+## Links
+
+- Homepage: https://three.ws
+- Changelog: https://three.ws/changelog
+- Issues: https://github.com/nirholas/three.ws/issues
+- License: Apache-2.0. See [LICENSE](./LICENSE).
+
+---
+
+<p align="center">
+  <sub>
+    Part of the <a href="https://three.ws">three.ws</a> SDK suite — 3D AI agents, on-chain identity, and agent payments.<br/>
+    <a href="https://three.ws">Website</a> · <a href="https://three.ws/changelog">Changelog</a> · <a href="https://github.com/nirholas/three.ws">GitHub</a>
+  </sub>
+</p>
+
+<!-- three.ws:growth -->
+## Support the project
+
+If pumpfun-mcp saves you time, **[star it on GitHub](https://github.com/nirholas/pumpfun-mcp)**. Stars are how other developers and AI agents find the repositories worth trusting, and they cost you one click.
+
+Know someone who would use it? [Post on X](https://twitter.com/intent/tweet?text=pumpfun-mcp%3A%20Free%2C%20read-only%20pump.fun%20%2B%20Solana%20MCP%20server%3A%20token%20discovery%2C%20on-chain%20bonding-curve%20%26%20holder&url=https%3A%2F%2Fgithub.com%2Fnirholas%2Fpumpfun-mcp) · [Share on Bluesky](https://bsky.app/intent/compose?text=pumpfun-mcp%3A%20Free%2C%20read-only%20pump.fun%20%2B%20Solana%20MCP%20server%3A%20token%20discovery%2C%20on-chain%20bonding-curve%20%26%20holder%20https%3A%2F%2Fgithub.com%2Fnirholas%2Fpumpfun-mcp) · [Share on LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fgithub.com%2Fnirholas%2Fpumpfun-mcp) · [Submit to Hacker News](https://news.ycombinator.com/submitlink?u=https%3A%2F%2Fgithub.com%2Fnirholas%2Fpumpfun-mcp&t=pumpfun-mcp%3A%20Free%2C%20read-only%20pump.fun%20%2B%20Solana%20MCP%20server%3A%20token%20discovery%2C%20on-chain%20bonding-curve%20%26%20holder) · [Share on Reddit](https://www.reddit.com/submit?url=https%3A%2F%2Fgithub.com%2Fnirholas%2Fpumpfun-mcp&title=pumpfun-mcp%3A%20Free%2C%20read-only%20pump.fun%20%2B%20Solana%20MCP%20server%3A%20token%20discovery%2C%20on-chain%20bonding-curve%20%26%20holder)
+
+## Built for AI agents too
+
+Coding agents and LLM tooling can read this repo directly: [AGENTS.md](./AGENTS.md), [llms.txt](./llms.txt), [llms-full.txt](./llms-full.txt). Point an agent at `https://github.com/nirholas/pumpfun-mcp` and it has the context it needs.
+
+## More from the same author
+
+- [All repositories by nirholas](https://github.com/nirholas/nirholas#readme): the full catalog, grouped by topic
+- [three.ws](https://three.ws): the platform for 3D AI agents with Solana wallets, a skill marketplace and x402 payments
+- Questions or ideas: [open an issue](https://github.com/nirholas/pumpfun-mcp/issues) or [start a discussion](https://github.com/nirholas/pumpfun-mcp/discussions)
+
+## Contributors
+
+[![Contributors](https://contrib.rocks/image?repo=nirholas/pumpfun-mcp)](https://github.com/nirholas/pumpfun-mcp/graphs/contributors)
+
+## Star history
+
+[![Star History Chart](https://api.star-history.com/svg?repos=nirholas/pumpfun-mcp&type=Date)](https://www.star-history.com/#nirholas/pumpfun-mcp&Date)
+
+<!-- /three.ws:growth -->
+
+<!-- three.ws:ecosystem -->
+## Part of three.ws
+
+[three.ws](https://three.ws) is a platform for 3D AI agents with Solana wallets: avatars, a skill marketplace, x402 payments and more than seventy MCP servers. `@three-ws/pumpfun-mcp` is one package from it.
+
+- Documentation site: https://nirholas.github.io/pumpfun-mcp/
+- npm: https://www.npmjs.com/package/@three-ws/pumpfun-mcp
+- Canonical source: https://github.com/nirholas/three.ws (this repository is a generated mirror of `packages/pumpfun-mcp`)
+- Agent-readable summary: [llms.txt](./llms.txt) and [AGENTS.md](./AGENTS.md)
+- Issues and ideas: https://github.com/nirholas/pumpfun-mcp/issues
+<!-- /three.ws:ecosystem -->

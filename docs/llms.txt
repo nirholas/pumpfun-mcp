@@ -1,0 +1,20 @@
+# @three-ws/pumpfun-mcp
+
+> Free, read-only pump.fun + Solana MCP server — token discovery, on-chain bonding-curve & holder analysis, creator fee-claim tracking, SNS resolution, KOL signals, and swap quotes. No API keys.
+
+@three-ws/pumpfun-mcp is a Model Context Protocol server from three.ws. Install: `npx -y @three-ws/pumpfun-mcp`.
+
+## Docs
+
+- [README](https://github.com/nirholas/pumpfun-mcp/blob/main/README.md): install, configuration, full reference
+- [Documentation site](https://nirholas.github.io/pumpfun-mcp/): the README as a web page
+- [Full text for LLMs](https://nirholas.github.io/pumpfun-mcp/llms-full.txt): README inlined
+- [AGENTS.md](https://github.com/nirholas/pumpfun-mcp/blob/main/AGENTS.md): guidance for coding agents
+
+## Project
+
+- [Source](https://github.com/nirholas/pumpfun-mcp)
+- [npm](https://www.npmjs.com/package/@three-ws/pumpfun-mcp)
+- [three.ws](https://three.ws): the platform this is part of
+- [Issues](https://github.com/nirholas/pumpfun-mcp/issues)
+- [MCP Registry](https://registry.modelcontextprotocol.io/?q=io.github.nirholas%2Fpumpfun-solana-mcp)
