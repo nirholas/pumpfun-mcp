@@ -1,0 +1,22 @@
+{
+  "name": "pumpfun-mcp",
+  "owner": {
+    "name": "nirholas"
+  },
+  "description": "Read-only pump.fun and Solana MCP server for token discovery, bonding curves, holders, creator claims, SNS and swap quotes.",
+  "plugins": [
+    {
+      "name": "pumpfun-mcp",
+      "source": "./plugins/pumpfun-mcp",
+      "description": "Read-only pump.fun and Solana MCP server for token discovery, bonding curves, holders, creator claims, SNS and swap quotes.",
+      "category": "data",
+      "tags": [
+        "pumpfun",
+        "solana",
+        "mcp",
+        "bonding-curve",
+        "sns"
+      ]
+    }
+  ]
+}
