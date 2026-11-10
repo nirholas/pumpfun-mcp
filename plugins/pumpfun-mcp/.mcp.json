@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "pumpfun": {
+      "command": "npx",
+      "args": ["-y", "@three-ws/pumpfun-mcp"]
+    }
+  }
+}
