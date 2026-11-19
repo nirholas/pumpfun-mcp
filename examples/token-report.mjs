@@ -83,7 +83,7 @@ await client.connect(transport);
 
 try {
 	// ── 1. pumpfun_bot_status ──────────────────────────────────────────────
-	// The indexer-backed discovery tools (search_tokens, get_trending_tokens,
+	// The indexer-backed discovery tools (search_tokens, get_creator_profile
 	// and friends) only exist when the backend has PUMPFUN_BOT_URL set. The
 	// on-chain tools this example uses never depend on it.
 	const status = await call(client, 'pumpfun_bot_status', {});

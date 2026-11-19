@@ -22,7 +22,7 @@ On-chain, always available on the hosted backend:
 - `pumpfun_token_3d`: builds a shareable 3D snapshot for a mint.
 - `pumpfun_bot_status`: shows whether the optional indexer is configured.
 
-Indexer-gated: `search_tokens`, `get_trending_tokens`, `get_new_tokens`, `get_graduated_tokens`, `get_king_of_the_hill`, `get_creator_profile`. The hosted backend has no indexer, so these do not appear in its tool list. Without it `get_token_details` returns SPL account facts only, with `name`, `symbol` and `uri` null. Call `pumpfun_bot_status` first when one of these is missing.
+Indexer-gated: `search_tokens`, `get_graduated_tokens`, `get_king_of_the_hill`, `get_creator_profile`. The hosted backend has no indexer, so these do not appear in its tool list. Without it `get_token_details` returns SPL account facts only, with `name`, `symbol` and `uri` null. Call `pumpfun_bot_status` first when one of these is missing.
 
 ## Worked example: is this coin safe to look at?
 

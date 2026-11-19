@@ -55,9 +55,9 @@ This package is a stdio bridge in front of the canonical backend, and it asks th
 backend for the authoritative tool list at startup. So the list reflects what the
 backend can actually serve at that moment.
 
-Six discovery tools depend on an external pump.fun indexer: `search_tokens`,
-`get_trending_tokens`, `get_new_tokens`, `get_graduated_tokens`,
-`get_king_of_the_hill`, and `get_creator_profile`. When the backend has no
+Four discovery tools depend on an external pump.fun indexer: `search_tokens`,
+`get_graduated_tokens`, `get_king_of_the_hill`, and `get_creator_profile`
+(`get_trending_tokens` and `get_new_tokens` no longer do). When the backend has no
 `PUMPFUN_BOT_URL` configured, it filters those out of `tools/list` entirely,
 which is deliberate: a client should only see tools it can call. They reappear
 with no client change once an indexer is wired up. The on-chain tools never

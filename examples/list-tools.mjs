@@ -11,10 +11,10 @@
 //
 // Worth knowing: this server asks its backend for the authoritative tool list at
 // startup, so the count reflects what the backend can actually serve right now.
-// The six indexer-backed discovery tools (search_tokens, get_trending_tokens,
-// get_new_tokens, get_graduated_tokens, get_king_of_the_hill,
-// get_creator_profile) are filtered out of tools/list when the backend has no
-// PUMPFUN_BOT_URL configured, which is the case on the public backend today.
+// The four indexer-backed discovery tools (search_tokens, get_graduated_tokens,
+// get_king_of_the_hill, get_creator_profile) are filtered out of tools/list
+// when the backend has no PUMPFUN_BOT_URL configured, which is the case on the
+// public backend today.
 // They reappear with no client change once an indexer is wired up. Run
 // pumpfun_bot_status (see token-report.mjs) to see that state directly.
 

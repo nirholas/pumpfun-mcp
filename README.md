@@ -76,7 +76,7 @@ The server speaks stdio JSON-RPC — your MCP client spawns it via the `npx` com
 
 All tools are **read-only** — nothing signs or sends a transaction. `pumpfun_quote_swap` only quotes; `pumpfun_vanity_mint` returns a keypair for you to use yourself, generated on your machine.
 
-**Six tools are indexer-gated.** `search_tokens`, `get_trending_tokens`, `get_new_tokens`, `get_graduated_tokens`, `get_king_of_the_hill`, and `get_creator_profile` need a pump.fun indexer (`PUMPFUN_BOT_URL`). The hosted endpoint at `three.ws/api/pump-fun-mcp` has none configured, so it filters those six out of `tools/list` and they will not appear when you connect to it; set the env var on your own deployment and they return with no code change. Everything else, including `get_token_trades`, works off on-chain data with no indexer. Call `pumpfun_bot_status` to see which side you are on. Note that without the indexer `get_token_details` returns SPL account facts only (`name`, `symbol`, and `uri` come back `null`).
+**Four tools are indexer-gated.** `search_tokens`, `get_graduated_tokens`, `get_king_of_the_hill`, and `get_creator_profile` need a pump.fun indexer (`PUMPFUN_BOT_URL`). The hosted endpoint at `three.ws/api/pump-fun-mcp` has none configured, so it filters those four out of `tools/list` and they will not appear when you connect to it; set the env var on your own deployment and they return with no code change. Everything else, including `get_token_trades`, works off on-chain data with no indexer. Call `pumpfun_bot_status` to see which side you are on. Note that without the indexer `get_token_details` returns SPL account facts only (`name`, `symbol`, and `uri` come back `null`).
 
 The hosted endpoint also serves `get_coin_intel` and `get_oracle_conviction`, which the bridge passes through although the table below does not list them.
 
@@ -159,6 +159,8 @@ No configuration is required. One optional override exists:
 | Env var           | Default                             | Purpose                                                   |
 | ----------------- | ----------------------------------- | --------------------------------------------------------- |
 | `PUMPFUN_MCP_URL` | `https://three.ws/api/pump-fun-mcp` | Backend endpoint. Override only to self-host the handler. |
+
+`PUMPFUN_MCP_URL` must be an `http(s)` URL. Logs and error messages print only its origin, so credentials, query-string keys or path tokens in it are never echoed.
 
 ## How it works
 
