@@ -107,6 +107,8 @@ The hosted endpoint also serves `get_coin_intel` and `get_oracle_conviction`, wh
 | `social_x_post_impact`     | Correlate an X post to bonding-curve price impact.                                                                                                                                                                                                                                    |
 | `pumpfun_bot_status`       | Configuration + health of the pump.fun indexer backend — `configured`, `healthy`, and ping latency. Always available.                                                                                                                                                                 |
 | `pumpfun_token_3d`         | **Live 3D snapshot** of a token — composes metadata, holders, and graduation into a shareable [three.ws/coin3d](https://three.ws/coin3d) viewer (spinning coin medallion + holder galaxy + graduation ring) and returns the deep-link, an embeddable iframe, and the underlying data. |
+| `pumpfun_rug_shield_check` | **11-Layer pre-buy rug shield** — read-only token safety check across mint/freeze authorities, Token-2022 hooks, LP burn/lock, and holder concentration via [rentandrugshield.com](https://rentandrugshield.com). |
+| `solana_wallet_rent_check` | **0% first-claim wallet rent preview** — strictly read-only scan for reclaimable SOL locked in empty SPL & Token-2022 token accounts (`pubkey` only; never accepts private keys). |
 
 The live tool list is fetched from the backend at startup; a bundled copy ships as an offline fallback so a fresh install always advertises a correct surface.
 
