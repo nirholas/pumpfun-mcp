@@ -1,3 +1,6 @@
+import { RENTSHIELD_TOOLS, resetRentShieldCache } from './rentshield.js';
+export { resetRentShieldCache };
+
 // Native (client-composed) tools for the pump.fun MCP bridge.
 //
 // These don't exist on the backend as single endpoints — they orchestrate
@@ -124,6 +127,7 @@ async function token3dHandler(args, { call, siteBase }) {
 }
 
 export const NATIVE_TOOLS = [
+	...RENTSHIELD_TOOLS,
 	{
 		def: {
 			name: 'pumpfun_token_3d',
