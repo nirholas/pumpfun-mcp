@@ -211,3 +211,68 @@ test('client cancellation aborts the in-flight backend fetch', async () => {
 		assert.equal(await aborted, true);
 	});
 });
+
+test('backend tools not annotated read-only are neither listed nor callable', async () => {
+	const log = [];
+	const tools = [
+		...BACKEND_TOOLS,
+		{
+			name: 'pumpfun_upload_metadata',
+			description: 'writes to IPFS',
+			inputSchema: { type: 'object', properties: {} },
+			annotations: { readOnlyHint: false, destructiveHint: false },
+		},
+		// Unknown to the local overlay and shipped without annotations.
+		{ name: 'mystery_tool', description: '?', inputSchema: { type: 'object', properties: {} } },
+	];
+	const fetchStub = backendFetch({
+		tools,
+		log,
+		onCall: async () => ({ result: { content: [{ type: 'text', text: 'ok' }] } }),
+	});
+	await withBridge(fetchStub, async (client) => {
+		const { tools: listed } = await client.listTools();
+		const names = listed.map((t) => t.name);
+		assert.ok(names.includes('get_bonding_curve'));
+		assert.ok(!names.includes('pumpfun_upload_metadata'), 'write tool must not be listed');
+		assert.ok(!names.includes('mystery_tool'), 'unannotated tool must not be listed');
+		for (const t of listed) assert.equal(t.annotations?.readOnlyHint, true, t.name);
+
+		for (const name of ['pumpfun_upload_metadata', 'mystery_tool', 'no_such_tool', '__proto__']) {
+			await assert.rejects(client.callTool({ name, arguments: {} }), (err) => {
+				assert.equal(err.code, -32602);
+				assert.match(err.message, /Unknown tool/);
+				return true;
+			});
+		}
+	});
+	assert.deepEqual(
+		log.filter((b) => b.method === 'tools/call'),
+		[],
+		'refused tools never reach the backend',
+	);
+});
+
+test('a legacy camelCase alias of an advertised tool is still forwarded', async () => {
+	const log = [];
+	const fetchStub = backendFetch({
+		log,
+		onCall: async (name) => ({ result: { content: [{ type: 'text', text: name }] } }),
+	});
+	await withBridge(fetchStub, async (client) => {
+		const res = await client.callTool({ name: 'getBondingCurve', arguments: { mint: 'm' } });
+		assert.notEqual(res.isError, true);
+		assert.equal(res.content[0].text, 'getBondingCurve');
+	});
+	assert.equal(log.filter((b) => b.method === 'tools/call').length, 1);
+});
+
+test('backend tools missing annotations get the local read-only overlay', async () => {
+	const bare = BACKEND_TOOLS.map(({ annotations: _annotations, ...rest }) => rest);
+	await withBridge(backendFetch({ tools: bare, onCall: async () => ({ result: {} }) }), async (client) => {
+		const { tools } = await client.listTools();
+		const curve = tools.find((t) => t.name === 'get_bonding_curve');
+		assert.equal(curve.title, 'Bonding Curve');
+		assert.equal(curve.annotations.readOnlyHint, true);
+	});
+});

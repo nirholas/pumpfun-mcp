@@ -22,9 +22,14 @@ import { pathToFileURL } from 'node:url';
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import {
+	CallToolRequestSchema,
+	ErrorCode,
+	ListToolsRequestSchema,
+	McpError,
+} from '@modelcontextprotocol/sdk/types.js';
 
-import { FALLBACK_TOOLS, TOOL_ANNOTATIONS } from './tools.js';
+import { FALLBACK_TOOLS, TOOL_ANNOTATIONS, resolveToolName } from './tools.js';
 import { buildNativeRegistry } from './native.js';
 import { INTERNAL_ERROR, ToolError, errorMessage } from './errors.js';
 import { redactUrl } from './url.js';
@@ -195,13 +200,26 @@ async function callTool(name, args, signal) {
  * @returns {Tool}
  */
 function withLocalAnnotations(tool) {
-	const local = TOOL_ANNOTATIONS[tool?.name];
+	const canonical = resolveToolName(tool?.name);
+	const local = typeof canonical === 'string' ? TOOL_ANNOTATIONS[canonical] : undefined;
 	if (!local) return tool;
 	return {
 		...tool,
 		title: tool.title ?? local.title,
 		annotations: tool.annotations ?? local,
 	};
+}
+
+/**
+ * True when a tool definition is explicitly annotated read-only. This bridge is
+ * read-only by contract, so a tool without that annotation is never exposed,
+ * whatever the backend advertises.
+ *
+ * @param {Tool} tool
+ * @returns {boolean}
+ */
+function isReadOnly(tool) {
+	return tool.annotations?.readOnlyHint === true && tool.annotations?.destructiveHint !== true;
 }
 
 /**
@@ -215,7 +233,27 @@ function withLocalAnnotations(tool) {
 export async function buildServer() {
 	const backendTools = await loadTools();
 	const native = buildNativeRegistry(backendUrl(), callTool);
-	const tools = [...backendTools.map(withLocalAnnotations), ...native.defs];
+	const nativeNames = new Set(native.defs.map((t) => t.name));
+	/** @type {Tool[]} */
+	const tools = [];
+	for (const tool of [
+		// A native tool replaces a backend tool of the same name.
+		...backendTools.map(withLocalAnnotations).filter((t) => !nativeNames.has(t.name)),
+		...native.defs,
+	]) {
+		if (isReadOnly(tool)) tools.push(tool);
+		else {
+			process.stderr.write(
+				`[pumpfun-mcp] not exposing ${tool.name}: it is not annotated readOnlyHint=true\n`,
+			);
+		}
+	}
+	const advertised = new Set(tools.map((t) => t.name));
+	/** Advertised names, plus legacy camelCase aliases of advertised names. */
+	const isCallable = (/** @type {string} */ name) => {
+		const canonical = resolveToolName(name);
+		return advertised.has(name) || (typeof canonical === 'string' && advertised.has(canonical));
+	};
 
 	const server = new Server(
 		{ name: SERVER_NAME, version: SERVER_VERSION },
@@ -238,6 +276,12 @@ export async function buildServer() {
 
 	server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
 		const { name, arguments: args } = request.params;
+
+		// Only advertised (read-only) tools are forwarded. The backend serves
+		// more than this bridge exposes, e.g. tools that write or need auth.
+		if (!isCallable(name)) {
+			throw new McpError(ErrorCode.InvalidParams, `Unknown tool: ${name}`);
+		}
 
 		// Native composed tools run in-process (they orchestrate backend reads).
 		const nativeHandler = native.handlers.get(name);

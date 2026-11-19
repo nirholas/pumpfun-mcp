@@ -78,7 +78,9 @@ All tools are **read-only** — nothing signs or sends a transaction. `pumpfun_q
 
 **Six tools are indexer-gated.** `search_tokens`, `get_trending_tokens`, `get_new_tokens`, `get_graduated_tokens`, `get_king_of_the_hill`, and `get_creator_profile` need a pump.fun indexer (`PUMPFUN_BOT_URL`). The hosted endpoint at `three.ws/api/pump-fun-mcp` has none configured, so it filters those six out of `tools/list` and they will not appear when you connect to it; set the env var on your own deployment and they return with no code change. Everything else, including `get_token_trades`, works off on-chain data with no indexer. Call `pumpfun_bot_status` to see which side you are on. Note that without the indexer `get_token_details` returns SPL account facts only (`name`, `symbol`, and `uri` come back `null`).
 
-The hosted endpoint also serves three tools the table below does not list: `get_coin_intel`, `get_oracle_conviction`, and `pumpfun_upload_metadata`.
+The hosted endpoint also serves `get_coin_intel` and `get_oracle_conviction`, which the bridge passes through although the table below does not list them.
+
+**The bridge enforces read-only.** It exposes a backend tool only when the tool is annotated `readOnlyHint: true` (the backend's annotation, or the bundled one for tools it knows), and refuses to forward a call to any tool it does not list. The backend's `pumpfun_upload_metadata` writes to IPFS and needs an API key, so it is never exposed here.
 
 | Tool                       | What it does                                                                                                                                                                                                                                                                          |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -173,7 +175,9 @@ Failures surface as MCP tool errors (`isError: true`) with the real cause — ne
 | `Backend request failed: …` | The bridge could not reach the backend (network, non-2xx, bad JSON). | Check connectivity / `PUMPFUN_MCP_URL`; safe to retry. |
 | `[-32602] …` | Invalid argument (e.g. `pumpfun_token_3d` without a `mint`). | Fix the argument named in the message. |
 | `[-32004] no on-chain data for <mint>: …` | `pumpfun_token_3d` found no metadata, curve, or holder data for the mint. | Verify the mint address and network (`mainnet`/`devnet`). |
-| `[<code>] <message>` | Any other backend JSON-RPC error (unknown tool, indexer unavailable, on-chain read failure), passed through verbatim. | The message states the upstream cause; transient indexer errors are safe to retry. |
+| `[<code>] <message>` | Any other backend JSON-RPC error (indexer unavailable, on-chain read failure), passed through verbatim. | The message states the upstream cause; transient indexer errors are safe to retry. |
+
+Calling a tool this server does not list is a JSON-RPC protocol error (`-32602 Unknown tool: <name>`), not a tool result, and nothing is sent to the backend.
 
 `pumpfun_token_3d` degrades gracefully: if only some of its three source reads succeed it still returns a snapshot, marking the missing parts (`no holder data available`, `no bonding-curve data available`) — it errors only when all three fail.
 
