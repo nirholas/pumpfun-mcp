@@ -74,7 +74,7 @@ The server speaks stdio JSON-RPC — your MCP client spawns it via the `npx` com
 
 ## Tools
 
-All tools are **read-only** — nothing signs or sends a transaction. `pumpfun_quote_swap` only quotes; `pumpfun_vanity_mint` returns a keypair for you to use yourself.
+All tools are **read-only** — nothing signs or sends a transaction. `pumpfun_quote_swap` only quotes; `pumpfun_vanity_mint` returns a keypair for you to use yourself, generated on your machine.
 
 **Six tools are indexer-gated.** `search_tokens`, `get_trending_tokens`, `get_new_tokens`, `get_graduated_tokens`, `get_king_of_the_hill`, and `get_creator_profile` need a pump.fun indexer (`PUMPFUN_BOT_URL`). The hosted endpoint at `three.ws/api/pump-fun-mcp` has none configured, so it filters those six out of `tools/list` and they will not appear when you connect to it; set the env var on your own deployment and they return with no code change. Everything else, including `get_token_trades`, works off on-chain data with no indexer. Call `pumpfun_bot_status` to see which side you are on. Note that without the indexer `get_token_details` returns SPL account facts only (`name`, `symbol`, and `uri` come back `null`).
 
@@ -100,7 +100,7 @@ The hosted endpoint also serves `get_coin_intel` and `get_oracle_conviction`, wh
 | `pumpfun_first_claims`     | First-ever creator claims — a cash-out signal.                                                                                                                                                                                                                                        |
 | `pumpfun_quote_swap`       | Read-only PumpSwap AMM swap quote for a graduated coin (no signing). Prices on vault + signed, often negative, `virtual_quote_reserves`.                                                                                                                                                                                                                   |
 | `pumpfun_watch_whales`     | Collect large trades on a token over a short window.                                                                                                                                                                                                                                  |
-| `pumpfun_vanity_mint`      | Grind a vanity Solana keypair (secret returned to caller, never stored).                                                                                                                                                                                                              |
+| `pumpfun_vanity_mint`      | Grind a vanity Solana keypair **locally**: the secret key is generated in this process and returned only to the caller, never sent to a server or stored. 60 s limit; keep patterns to 3-4 base58 characters. |
 | `sns_resolve`              | Resolve a `.sol` domain to its owner wallet.                                                                                                                                                                                                                                          |
 | `sns_reverseLookup`        | Reverse-lookup a wallet to its primary `.sol` domain.                                                                                                                                                                                                                                 |
 | `social_cashtag_sentiment` | Deterministic lexicon sentiment over supplied posts.                                                                                                                                                                                                                                  |
@@ -164,7 +164,9 @@ No configuration is required. One optional override exists:
 
 This package is a small stdio ↔ HTTP bridge. It forwards MCP `tools/call` requests to the canonical three.ws pump.fun JSON-RPC backend, which performs the actual Solana RPC reads and pump.fun API queries. That keeps one authoritative implementation, ships no secrets to clients, and means the tool surface stays current automatically.
 
-`pumpfun_token_3d` is a **native** tool: it runs in-process, orchestrating several backend reads (metadata + bonding curve + holders) and resolving the token logo from its on-chain metadata URI, then returns a deep-link into the three.ws 3D viewer. It needs no extra keys and adds no new backend dependency.
+`pumpfun_token_3d` is a **native** tool: it runs in-process, orchestrating several backend reads (metadata + bonding curve + holders) and resolving the token logo from its on-chain metadata URI, then returns a deep-link into the three.ws 3D viewer. It needs no extra keys and adds no new backend dependency. The metadata URI is chosen by the token's creator, so it is fetched only from a public HTTPS host (no IP literals, no local or private names, redirects re-checked, 256 KiB cap).
+
+`pumpfun_vanity_mint` is also native, and replaces the backend tool of the same name: a secret key generated on a remote server is a secret key that server has seen, so the keypair is ground locally with `node:crypto`.
 
 ## Errors
 

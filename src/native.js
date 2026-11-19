@@ -10,6 +10,13 @@ import { isSolanaAddress } from './base58.js';
 import { NO_DATA, INVALID_PARAMS, ToolError } from './errors.js';
 import { deadline } from './signal.js';
 import { fetchPublicJson, toPublicHttpsUrl } from './url.js';
+import {
+	VANITY_DEFAULT_MAX_ATTEMPTS,
+	VANITY_MAX_ATTEMPTS,
+	VANITY_MAX_PATTERN_LENGTH,
+	VANITY_TIME_LIMIT_MS,
+	grindVanityKeypair,
+} from './vanity.js';
 
 /** @typedef {import('@modelcontextprotocol/sdk/types.js').Tool} Tool */
 /** @typedef {Record<string, unknown>} Json */
@@ -219,6 +226,28 @@ async function token3dHandler(args, { call, siteBase, signal }) {
 	};
 }
 
+// pumpfun_vanity_mint — grind a vanity keypair in this process. The backend
+// also lists this tool, but generating a secret key on a remote server means
+// trusting that server with it (and the hosted backend gates the tool behind
+// payment), so the local implementation always replaces it.
+/** @type {NativeHandler} */
+async function vanityMintHandler(args, { signal }) {
+	const result = await grindVanityKeypair({
+		prefix: args.prefix,
+		suffix: args.suffix,
+		caseSensitive: args.caseSensitive,
+		maxAttempts: args.maxAttempts,
+		signal,
+	});
+	return {
+		...result,
+		generatedLocally: true,
+		warning:
+			'Save secretKey now: it is not stored anywhere, and anyone holding it controls this address. ' +
+			'It was generated on this machine and never sent to a server.',
+	};
+}
+
 /** @type {{ def: Tool, handler: NativeHandler }[]} */
 export const NATIVE_TOOLS = [
 	{
@@ -252,6 +281,50 @@ export const NATIVE_TOOLS = [
 			},
 		},
 		handler: token3dHandler,
+	},
+	{
+		def: {
+			name: 'pumpfun_vanity_mint',
+			title: 'Vanity Mint Keypair',
+			annotations: {
+				// Pure local computation with a fresh keypair every call.
+				title: 'Vanity Mint Keypair',
+				readOnlyHint: true,
+				destructiveHint: false,
+				idempotentHint: false,
+				openWorldHint: false,
+			},
+			description:
+				'Generate a Solana keypair whose address starts and/or ends with a vanity pattern. ' +
+				'Runs entirely on this machine: the secret key is never sent to any server, logged, or stored. ' +
+				'Returns publicKey and secretKey (base58 of the 64-byte Solana secret key), attempts and durationMs. ' +
+				`Caller must save the secret key immediately. Hard timeout: ${VANITY_TIME_LIMIT_MS / 1000} s; ` +
+				'each extra character makes the search up to 58x longer, so keep patterns to 3-4 characters. ' +
+				'Use this before launching a coin when its mint address should carry a recognizable prefix or suffix.',
+			inputSchema: {
+				type: 'object',
+				properties: {
+					suffix: {
+						type: 'string',
+						description: 'Desired address suffix, base58 characters only (case-insensitive by default)',
+						maxLength: VANITY_MAX_PATTERN_LENGTH,
+					},
+					prefix: {
+						type: 'string',
+						description: 'Desired address prefix, base58 characters only (case-insensitive by default)',
+						maxLength: VANITY_MAX_PATTERN_LENGTH,
+					},
+					caseSensitive: { type: 'boolean', default: false },
+					maxAttempts: {
+						type: 'integer',
+						minimum: 1,
+						maximum: VANITY_MAX_ATTEMPTS,
+						default: VANITY_DEFAULT_MAX_ATTEMPTS,
+					},
+				},
+			},
+		},
+		handler: vanityMintHandler,
 	},
 ];
 

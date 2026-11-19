@@ -276,3 +276,39 @@ test('backend tools missing annotations get the local read-only overlay', async 
 		assert.equal(curve.annotations.readOnlyHint, true);
 	});
 });
+
+test('pumpfun_vanity_mint runs locally: listed once, never sent to the backend', async () => {
+	const log = [];
+	const tools = [
+		...BACKEND_TOOLS,
+		{
+			name: 'pumpfun_vanity_mint',
+			description: 'remote grind',
+			inputSchema: { type: 'object', properties: {} },
+			annotations: { ...READ_ONLY, openWorldHint: false },
+		},
+	];
+	const fetchStub = backendFetch({
+		tools,
+		log,
+		onCall: async () => {
+			throw new Error('vanity must not reach the backend');
+		},
+	});
+	await withBridge(fetchStub, async (client) => {
+		const { tools: listed } = await client.listTools();
+		const vanity = listed.filter((t) => t.name === 'pumpfun_vanity_mint');
+		assert.equal(vanity.length, 1);
+		assert.match(vanity[0].description, /never sent to any server/);
+
+		const res = await client.callTool({ name: 'pumpfun_vanity_mint', arguments: { suffix: 'x' } });
+		assert.notEqual(res.isError, true);
+		assert.ok(res.structuredContent.publicKey.toLowerCase().endsWith('x'));
+		assert.equal(res.structuredContent.generatedLocally, true);
+
+		const bad = await client.callTool({ name: 'pumpfun_vanity_mint', arguments: { suffix: '0' } });
+		assert.equal(bad.isError, true);
+		assert.match(bad.content[0].text, /^\[-32602\]/);
+	});
+	assert.deepEqual(log.filter((b) => b.method === 'tools/call'), []);
+});

@@ -54,8 +54,9 @@
 //                      (name-service lookups).
 //  LOCAL_DETERMINISTIC pure in-process computation, stable output (lexicon
 //                      sentiment scoring).
-//  LOCAL_GENERATIVE    pure in-process computation, fresh output each call
-//                      (vanity keypair grind).
+//
+// pumpfun_vanity_mint is not here: it runs in this process (src/vanity.js) so
+// the secret key never leaves the machine. See src/native.js.
 const LIVE_READ = Object.freeze({
 	readOnlyHint: true,
 	destructiveHint: false,
@@ -72,12 +73,6 @@ const LOCAL_DETERMINISTIC = Object.freeze({
 	readOnlyHint: true,
 	destructiveHint: false,
 	idempotentHint: true,
-	openWorldHint: false,
-});
-const LOCAL_GENERATIVE = Object.freeze({
-	readOnlyHint: true,
-	destructiveHint: false,
-	idempotentHint: false,
 	openWorldHint: false,
 });
 
@@ -152,7 +147,6 @@ export const TOOL_ANNOTATIONS = Object.freeze({
 	get_king_of_the_hill: { title: 'King of the Hill', ...LIVE_READ },
 	get_creator_profile: { title: 'Creator Profile', ...LIVE_READ },
 	get_token_holders: { title: 'Token Holders', ...LIVE_READ },
-	pumpfun_vanity_mint: { title: 'Vanity Mint Keypair', ...LOCAL_GENERATIVE },
 	pumpfun_watch_whales: { title: 'Watch Whale Trades', ...LIVE_READ },
 	pumpfun_list_claims: { title: 'List Creator Fee Claims', ...LIVE_READ },
 	pumpfun_watch_claims: { title: 'Watch Creator Fee Claims', ...LIVE_READ },
@@ -335,27 +329,6 @@ export const FALLBACK_TOOLS = [
 				network: { type: 'string', enum: ['mainnet', 'devnet'], default: 'mainnet' },
 			},
 			required: ['mint'],
-		},
-	},
-	{
-		name: 'pumpfun_vanity_mint',
-		description:
-			'Generate a Solana keypair whose address ends/starts with a vanity pattern. Returns publicKey + secretKey (base58). Caller must save the secret key immediately; it is never stored. Hard timeout: 60 s. ' +
-			'Use this before launching a coin when its mint address should carry a recognizable prefix or suffix.',
-		inputSchema: {
-			type: 'object',
-			properties: {
-				suffix: {
-					type: 'string',
-					description: 'Desired address suffix (case-insensitive by default)',
-				},
-				prefix: {
-					type: 'string',
-					description: 'Desired address prefix (case-insensitive by default)',
-				},
-				caseSensitive: { type: 'boolean', default: false },
-				maxAttempts: { type: 'integer', default: 5000000 },
-			},
 		},
 	},
 	{

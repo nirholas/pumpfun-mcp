@@ -70,9 +70,12 @@ test('semantic spot checks: deterministic and local-compute tools', () => {
 	// Pure lexicon scorer: deterministic and closed-world.
 	assert.equal(TOOL_ANNOTATIONS.social_cashtag_sentiment.idempotentHint, true);
 	assert.equal(TOOL_ANNOTATIONS.social_cashtag_sentiment.openWorldHint, false);
-	// Vanity grind: local compute, fresh keypair every call.
-	assert.equal(TOOL_ANNOTATIONS.pumpfun_vanity_mint.idempotentHint, false);
-	assert.equal(TOOL_ANNOTATIONS.pumpfun_vanity_mint.openWorldHint, false);
+	// Vanity grind: local compute (a native tool), fresh keypair every call.
+	const vanity = NATIVE_TOOLS.find(({ def }) => def.name === 'pumpfun_vanity_mint');
+	assert.ok(vanity, 'pumpfun_vanity_mint is implemented natively');
+	assert.equal(vanity.def.annotations.idempotentHint, false);
+	assert.equal(vanity.def.annotations.openWorldHint, false);
+	assert.ok(!Object.hasOwn(TOOL_ANNOTATIONS, 'pumpfun_vanity_mint'), 'no backend overlay for it');
 });
 
 test('resolveToolName maps every legacy alias to canonical and passes others through', () => {
