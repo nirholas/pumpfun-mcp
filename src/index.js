@@ -267,8 +267,10 @@ export async function buildServer() {
 				'pumpfun_list_claims, pumpfun_watch_claims, pumpfun_first_claims), Solana Name ' +
 				'Service (sns_resolve, sns_reverseLookup), market signals (' +
 				'kol_leaderboard, pumpfun_quote_swap, pumpfun_watch_whales, pumpfun_bot_status), ' +
-				'and social sentiment (social_cashtag_sentiment, social_x_post_impact). All data ' +
-				'is live and on-chain; no API keys required.',
+				'social sentiment (social_cashtag_sentiment, social_x_post_impact), a shareable 3D ' +
+				'token snapshot (pumpfun_token_3d), and local vanity keypair grinding ' +
+				'(pumpfun_vanity_mint; the secret key never leaves this machine). All data is live ' +
+				'and on-chain; no API keys required.',
 		},
 	);
 

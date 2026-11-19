@@ -94,13 +94,6 @@ export const TOOL_NAME_ALIASES = Object.freeze({
 	getTokenHolders: 'get_token_holders',
 });
 
-/** @type {Readonly<Record<string, string>>} */
-const CANONICAL_TO_LEGACY = Object.freeze(
-	Object.fromEntries(
-		Object.entries(TOOL_NAME_ALIASES).map(([legacy, canonical]) => [canonical, legacy]),
-	),
-);
-
 // Resolve a tool name to its canonical (snake_case) form. Unknown names pass
 // through unchanged. hasOwn guard: "__proto__"/"constructor" must not resolve
 // an inherited member.
@@ -113,21 +106,6 @@ export function resolveToolName(name) {
 		return TOOL_NAME_ALIASES[name];
 	}
 	return name;
-}
-
-// The other spelling of an aliased tool name (canonical → legacy, legacy →
-// canonical), or null when the name has no alias. Used by the bridge to retry
-// a tools/call once against an older or newer deployed backend that only
-// understands one spelling.
-/**
- * @param {unknown} name
- * @returns {string | null}
- */
-export function alternateToolName(name) {
-	if (typeof name !== 'string') return null;
-	if (Object.hasOwn(TOOL_NAME_ALIASES, name)) return TOOL_NAME_ALIASES[name];
-	if (Object.hasOwn(CANONICAL_TO_LEGACY, name)) return CANONICAL_TO_LEGACY[name];
-	return null;
 }
 
 // name → { title, ...ToolAnnotations }. Stamped onto FALLBACK_TOOLS below and

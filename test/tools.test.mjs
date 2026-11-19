@@ -14,7 +14,6 @@ import {
 	TOOL_ANNOTATIONS,
 	TOOL_NAME_ALIASES,
 	resolveToolName,
-	alternateToolName,
 } from '../src/tools.js';
 import { NATIVE_TOOLS } from '../src/native.js';
 
@@ -92,17 +91,6 @@ test('resolveToolName never resolves inherited object members', () => {
 	for (const name of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
 		assert.equal(resolveToolName(name), name, `${name} must pass through unresolved`);
 	}
-});
-
-test('alternateToolName round-trips both spellings and rejects everything else', () => {
-	for (const [legacy, canonical] of Object.entries(TOOL_NAME_ALIASES)) {
-		assert.equal(alternateToolName(legacy), canonical);
-		assert.equal(alternateToolName(canonical), legacy);
-	}
-	assert.equal(alternateToolName('pumpfun_vanity_mint'), null, 'unaliased tools have no alternate');
-	assert.equal(alternateToolName('nope'), null);
-	assert.equal(alternateToolName(undefined), null);
-	assert.equal(alternateToolName(123), null);
 });
 
 test('every alias targets an advertised canonical tool; legacy spellings are not advertised', () => {
