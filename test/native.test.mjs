@@ -289,3 +289,27 @@ test('non-string name and symbol fields are ignored rather than thrown on', asyn
 	assert.equal(out.name, null);
 	assert.equal(out.symbol, null);
 });
+
+test('a creator-controlled metadata uri pointing into a private network is never fetched', async () => {
+	const fetched = [];
+	const fetchStub = async (url) => {
+		fetched.push(String(url));
+		return new Response('{"image":"https://cdn.example/x.png"}');
+	};
+	for (const uri of ['http://169.254.169.254/latest/meta-data/', 'https://localhost:8080/admin']) {
+		const call = stubCall({ get_token_details: { uri } });
+		const { handlers } = buildNativeRegistry(BACKEND, call);
+		const out = await withFetch(fetchStub, () => handlers.get('pumpfun_token_3d')({ mint: MINT }));
+		assert.equal(out.image, null);
+	}
+	assert.deepEqual(fetched, []);
+});
+
+test('an unsafe image URL from metadata is dropped, not returned to the client', async () => {
+	const fetchStub = async () => new Response('{"image":"javascript:alert(1)"}');
+	const call = stubCall({ get_token_details: { uri: 'https://meta.example/m.json' } });
+	const { handlers } = buildNativeRegistry(BACKEND, call);
+	const out = await withFetch(fetchStub, () => handlers.get('pumpfun_token_3d')({ mint: MINT }));
+	assert.equal(out.image, null);
+	assert.match(out.rendering.coin, /no logo found/);
+});

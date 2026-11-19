@@ -9,6 +9,7 @@
 import { isSolanaAddress } from './base58.js';
 import { NO_DATA, INVALID_PARAMS, ToolError } from './errors.js';
 import { deadline } from './signal.js';
+import { fetchPublicJson, toPublicHttpsUrl } from './url.js';
 
 /** @typedef {import('@modelcontextprotocol/sdk/types.js').Tool} Tool */
 /** @typedef {Record<string, unknown>} Json */
@@ -53,19 +54,13 @@ function str(v) {
 	return typeof v === 'string' && v.length > 0 ? v : null;
 }
 
-/**
- * @param {unknown} url
- * @returns {string | null}
- */
-function ipfsToHttp(url) {
-	if (typeof url !== 'string') return null;
-	if (url.startsWith('ipfs://')) return `https://ipfs.io/ipfs/${url.slice(7)}`;
-	return url;
-}
-
 // The token logo lives in the off-chain metadata JSON pointed to by the
 // on-chain `uri`. Resolve it best-effort: a direct image field wins, otherwise
 // fetch the uri JSON and read .image. Returns null rather than guessing.
+//
+// Both the uri and the image are creator-controlled, so they go through the
+// public-HTTPS guard in url.js: no private hosts, no non-https schemes, and a
+// size-capped body. The returned image is always a public https URL or null.
 /**
  * @param {Json} d get_token_details structuredContent
  * @param {AbortSignal} [signal]
@@ -74,15 +69,13 @@ function ipfsToHttp(url) {
 async function resolveImage(d, signal) {
 	const meta = obj(d.metadata);
 	const direct = str(d.image) || str(d.imageUrl) || str(meta.image);
-	if (direct) return ipfsToHttp(direct);
-	const uri = ipfsToHttp(str(d.uri) || str(meta.uri));
+	if (direct) return toPublicHttpsUrl(direct);
+	const uri = str(d.uri) || str(meta.uri);
 	if (!uri) return null;
 	const limit = deadline(6000, signal);
 	try {
-		const res = await fetch(uri, { signal: limit.signal });
-		if (!res.ok) return null;
-		const json = obj(await res.json());
-		return ipfsToHttp(str(json.image));
+		const json = obj(await fetchPublicJson(uri, { signal: limit.signal }));
+		return toPublicHttpsUrl(json.image);
 	} catch {
 		return null;
 	} finally {
