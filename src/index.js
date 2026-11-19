@@ -27,6 +27,7 @@ import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprot
 import { FALLBACK_TOOLS, TOOL_ANNOTATIONS } from './tools.js';
 import { buildNativeRegistry } from './native.js';
 import { INTERNAL_ERROR, ToolError, errorMessage } from './errors.js';
+import { redactUrl } from './url.js';
 
 /** @typedef {import('@modelcontextprotocol/sdk/types.js').Tool} Tool */
 /** @typedef {import('@modelcontextprotocol/sdk/types.js').CallToolResult} CallToolResult */
@@ -55,10 +56,31 @@ const { version: SERVER_VERSION } = require('../package.json');
 // advertised tools (and their annotations) without spawning the server.
 export { FALLBACK_TOOLS, TOOL_ANNOTATIONS } from './tools.js';
 
+const DEFAULT_BACKEND_URL = 'https://three.ws/api/pump-fun-mcp';
+
 // Resolved per call, not once at import: the bin reads it at startup either way,
 // and a lazy read lets an embedder (or a test) repoint the bridge after the module
 // is already loaded.
-const backendUrl = () => process.env.PUMPFUN_MCP_URL || 'https://three.ws/api/pump-fun-mcp';
+const backendUrl = () => process.env.PUMPFUN_MCP_URL || DEFAULT_BACKEND_URL;
+
+/**
+ * The backend URL, checked to be http(s) before anything is sent to it.
+ *
+ * @returns {string}
+ */
+function checkedBackendUrl() {
+	const raw = backendUrl();
+	let protocol;
+	try {
+		protocol = new URL(raw).protocol;
+	} catch {
+		throw new Error('PUMPFUN_MCP_URL is not a valid URL');
+	}
+	if (protocol !== 'https:' && protocol !== 'http:') {
+		throw new Error('PUMPFUN_MCP_URL must be an http(s) URL');
+	}
+	return raw;
+}
 const SERVER_NAME = 'three.ws-pumpfun-mcp';
 
 // A monotonically increasing JSON-RPC id for backend calls. Local to this
@@ -76,7 +98,7 @@ let rpcId = 0;
  * @returns {Promise<BackendEnvelope>}
  */
 async function callBackend(method, params, timeoutMs = 30_000) {
-	const url = backendUrl();
+	const url = checkedBackendUrl();
 	const controller = new AbortController();
 	const timer = setTimeout(() => controller.abort(), timeoutMs);
 	try {
@@ -87,7 +109,7 @@ async function callBackend(method, params, timeoutMs = 30_000) {
 			signal: controller.signal,
 		});
 		if (!res.ok) {
-			throw new Error(`backend ${url} answered HTTP ${res.status}`);
+			throw new Error(`backend ${redactUrl(url)} answered HTTP ${res.status}`);
 		}
 		return /** @type {BackendEnvelope} */ (await res.json());
 	} finally {
@@ -269,11 +291,12 @@ export async function buildServer() {
 }
 
 async function main() {
+	checkedBackendUrl();
 	const server = await buildServer();
 	const transport = new StdioServerTransport();
 	await server.connect(transport);
 	process.stderr.write(
-		`[pumpfun-mcp] ${SERVER_NAME} v${SERVER_VERSION} ready with ${server.threeWsToolCount} tools via ${backendUrl()}\n`,
+		`[pumpfun-mcp] ${SERVER_NAME} v${SERVER_VERSION} ready with ${server.threeWsToolCount} tools via ${redactUrl(backendUrl())}\n`,
 	);
 }
 

@@ -11,6 +11,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
 import { buildServer } from '../src/index.js';
+import { redactUrl } from '../src/url.js';
 
 const BACKEND = 'https://backend.test/api/pump-fun-mcp';
 
@@ -131,4 +132,53 @@ test('an HTTP failure from the backend surfaces as "Backend request failed"', as
 		assert.equal(res.isError, true);
 		assert.match(res.content[0].text, /^Backend request failed: .*HTTP 502/);
 	});
+});
+
+test('redactUrl keeps only the origin: no credentials, path, query or fragment', () => {
+	assert.equal(
+		redactUrl('https://user:hunter2@rpc.example.com:8443/v1/sk-live-123?api-key=abc#frag'),
+		'https://rpc.example.com:8443',
+	);
+	assert.equal(redactUrl('not a url'), '<invalid URL>');
+	assert.equal(redactUrl('file:///etc/passwd'), '<non-http URL>');
+});
+
+test('backend failures never echo a secret-bearing PUMPFUN_MCP_URL', async () => {
+	const url = 'https://user:hunter2@self.example/v1/sk-live-123/mcp?api-key=abc';
+	const fetchStub = async (u, init) => {
+		const body = JSON.parse(init.body);
+		if (body.method === 'tools/list') return backendFetch()(u, init);
+		return new Response('nope', { status: 500 });
+	};
+	await withBridge(
+		fetchStub,
+		async (client) => {
+			const res = await client.callTool({ name: 'get_bonding_curve', arguments: { mint: 'm' } });
+			assert.equal(res.isError, true);
+			const text = res.content[0].text;
+			assert.match(text, /https:\/\/self\.example answered HTTP 500/);
+			for (const secret of ['hunter2', 'sk-live-123', 'api-key', 'abc']) {
+				assert.ok(!text.includes(secret), `error text leaked ${secret}: ${text}`);
+			}
+		},
+		{ url },
+	);
+});
+
+test('a non-http PUMPFUN_MCP_URL is refused before anything is sent', async () => {
+	const log = [];
+	const fetchStub = async () => {
+		log.push('called');
+		throw new Error('fetch must not be called');
+	};
+	await withBridge(
+		fetchStub,
+		async (client) => {
+			const res = await client.callTool({ name: 'get_bonding_curve', arguments: { mint: 'm' } });
+			assert.equal(res.isError, true);
+			assert.match(res.content[0].text, /PUMPFUN_MCP_URL must be an http\(s\) URL/);
+		},
+		{ url: 'file:///etc/passwd' },
+	);
+	assert.deepEqual(log, []);
 });
