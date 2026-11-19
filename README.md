@@ -154,11 +154,12 @@ backend has an indexer configured.
 
 ## Configuration
 
-No configuration is required. One optional override exists:
+No configuration is required. Two optional overrides exist:
 
-| Env var           | Default                             | Purpose                                                   |
-| ----------------- | ----------------------------------- | --------------------------------------------------------- |
-| `PUMPFUN_MCP_URL` | `https://three.ws/api/pump-fun-mcp` | Backend endpoint. Override only to self-host the handler. |
+| Env var                | Default                               | Purpose                                                   |
+| ---------------------- | ------------------------------------- | --------------------------------------------------------- |
+| `PUMPFUN_MCP_URL`      | `https://three.ws/api/pump-fun-mcp`   | Backend endpoint. Override only to self-host the handler. |
+| `PUMPFUN_IPFS_GATEWAY` | `https://gateway.pinata.cloud/ipfs/`  | IPFS gateway `pumpfun_token_3d` uses for `ipfs://` links and for links on retired public gateways (`ipfs.io`, `dweb.link`, `cloudflare-ipfs.com`, ...). Must be a public `https` URL. |
 
 `PUMPFUN_MCP_URL` must be an `http(s)` URL. Logs and error messages print only its origin, so credentials, query-string keys or path tokens in it are never echoed.
 

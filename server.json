@@ -34,6 +34,13 @@
 					"format": "string",
 					"isRequired": false,
 					"default": "https://three.ws/api/pump-fun-mcp"
+				},
+				{
+					"name": "PUMPFUN_IPFS_GATEWAY",
+					"description": "IPFS path gateway for token logos and metadata (ipfs:// links and links on retired public gateways such as ipfs.io). Must be a public https URL.",
+					"format": "string",
+					"isRequired": false,
+					"default": "https://gateway.pinata.cloud/ipfs/"
 				}
 			]
 		}

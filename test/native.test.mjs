@@ -235,7 +235,7 @@ test('a direct ipfs:// image field is rewritten to an HTTP gateway without fetch
 	const call = stubCall({ get_token_details: { image: 'ipfs://QmHash/logo.png' } });
 	const { handlers } = buildNativeRegistry(BACKEND, call);
 	const out = await withFetch(noFetch, () => handlers.get('pumpfun_token_3d')({ mint: MINT }));
-	assert.equal(out.image, 'https://ipfs.io/ipfs/QmHash/logo.png');
+	assert.equal(out.image, 'https://gateway.pinata.cloud/ipfs/QmHash/logo.png');
 });
 
 test('the image resolves through the metadata uri JSON when no direct field exists', async () => {
@@ -250,8 +250,8 @@ test('the image resolves through the metadata uri JSON when no direct field exis
 	const call = stubCall({ get_token_details: { uri: 'ipfs://QmJson/meta.json' } });
 	const { handlers } = buildNativeRegistry(BACKEND, call);
 	const out = await withFetch(fetchStub, () => handlers.get('pumpfun_token_3d')({ mint: MINT }));
-	assert.deepEqual(fetched, ['https://ipfs.io/ipfs/QmJson/meta.json']);
-	assert.equal(out.image, 'https://ipfs.io/ipfs/QmMeta/img.png');
+	assert.deepEqual(fetched, ['https://gateway.pinata.cloud/ipfs/QmJson/meta.json']);
+	assert.equal(out.image, 'https://gateway.pinata.cloud/ipfs/QmMeta/img.png');
 });
 
 test('metadata uri failures (HTTP error, network error) yield image:null, not a throw', async () => {
@@ -312,4 +312,18 @@ test('an unsafe image URL from metadata is dropped, not returned to the client',
 	const out = await withFetch(fetchStub, () => handlers.get('pumpfun_token_3d')({ mint: MINT }));
 	assert.equal(out.image, null);
 	assert.match(out.rendering.coin, /no logo found/);
+});
+
+test('metadata and image URLs on a retired ipfs.io gateway are re-pointed by CID', async () => {
+	// The live shape of a pump.fun coin: both URLs on ipfs.io, which now answers 429.
+	const fetched = [];
+	const fetchStub = async (url) => {
+		fetched.push(String(url));
+		return new Response(JSON.stringify({ image: 'https://ipfs.io/ipfs/bafyImage' }));
+	};
+	const call = stubCall({ get_token_details: { uri: 'https://ipfs.io/ipfs/bafyMeta' } });
+	const { handlers } = buildNativeRegistry(BACKEND, call);
+	const out = await withFetch(fetchStub, () => handlers.get('pumpfun_token_3d')({ mint: MINT }));
+	assert.deepEqual(fetched, ['https://gateway.pinata.cloud/ipfs/bafyMeta']);
+	assert.equal(out.image, 'https://gateway.pinata.cloud/ipfs/bafyImage');
 });

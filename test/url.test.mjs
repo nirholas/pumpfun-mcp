@@ -7,11 +7,25 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+	DEFAULT_IPFS_GATEWAY,
 	MAX_METADATA_BYTES,
 	fetchPublicJson,
+	ipfsGateway,
 	isPublicHttpsUrl,
 	toPublicHttpsUrl,
 } from '../src/url.js';
+
+function withGateway(value, fn) {
+	const prior = process.env.PUMPFUN_IPFS_GATEWAY;
+	if (value === undefined) delete process.env.PUMPFUN_IPFS_GATEWAY;
+	else process.env.PUMPFUN_IPFS_GATEWAY = value;
+	try {
+		return fn();
+	} finally {
+		if (prior === undefined) delete process.env.PUMPFUN_IPFS_GATEWAY;
+		else process.env.PUMPFUN_IPFS_GATEWAY = prior;
+	}
+}
 
 async function withFetch(stub, fn) {
 	const original = globalThis.fetch;
@@ -68,8 +82,8 @@ test('private, local, IP-literal, non-default-port and non-https URLs are refuse
 });
 
 test('toPublicHttpsUrl maps ipfs:// and ar:// to gateways and drops everything unsafe', () => {
-	assert.equal(toPublicHttpsUrl('ipfs://QmHash/logo.png'), 'https://ipfs.io/ipfs/QmHash/logo.png');
-	assert.equal(toPublicHttpsUrl('ipfs://ipfs/QmHash'), 'https://ipfs.io/ipfs/QmHash');
+	assert.equal(toPublicHttpsUrl('ipfs://QmHash/logo.png'), `${DEFAULT_IPFS_GATEWAY}QmHash/logo.png`);
+	assert.equal(toPublicHttpsUrl('ipfs://ipfs/QmHash'), `${DEFAULT_IPFS_GATEWAY}QmHash`);
 	assert.equal(toPublicHttpsUrl('ar://txid'), 'https://arweave.net/txid');
 	assert.equal(toPublicHttpsUrl('  https://cdn.example/a.png '), 'https://cdn.example/a.png');
 	for (const bad of [
@@ -160,4 +174,40 @@ test('fetchPublicJson maps non-2xx and invalid JSON to null', async () => {
 		await withFetch(async () => new Response('<html>'), () => fetchPublicJson('https://a.example/m')),
 		null,
 	);
+});
+
+test('retired gateways are re-pointed by CID; live gateways and other paths are left alone', () => {
+	withGateway(undefined, () => {
+		const cases = [
+			['https://ipfs.io/ipfs/bafyA/meta.json?x=1', `${DEFAULT_IPFS_GATEWAY}bafyA/meta.json?x=1`],
+			['https://dweb.link/ipfs/bafyB', `${DEFAULT_IPFS_GATEWAY}bafyB`],
+			['https://cloudflare-ipfs.com/ipfs/QmC', `${DEFAULT_IPFS_GATEWAY}QmC`],
+			['https://bafyd.ipfs.dweb.link/img.png', `${DEFAULT_IPFS_GATEWAY}bafyd/img.png`],
+			['https://bafye.ipfs.w3s.link/', `${DEFAULT_IPFS_GATEWAY}bafye/`],
+			// Not a gateway path: untouched.
+			['https://ipfs.io/docs', 'https://ipfs.io/docs'],
+			// A live gateway: untouched.
+			['https://pump.mypinata.cloud/ipfs/QmF', 'https://pump.mypinata.cloud/ipfs/QmF'],
+		];
+		for (const [input, expected] of cases) assert.equal(toPublicHttpsUrl(input), expected, input);
+	});
+});
+
+test('PUMPFUN_IPFS_GATEWAY overrides the gateway only when it is a public https URL', () => {
+	for (const [value, expected] of [
+		[undefined, DEFAULT_IPFS_GATEWAY],
+		['https://gw.example', 'https://gw.example/ipfs/'],
+		['https://gw.example/', 'https://gw.example/ipfs/'],
+		['https://gw.example/ipfs', 'https://gw.example/ipfs/'],
+		['https://gw.example/ipfs/', 'https://gw.example/ipfs/'],
+		['http://gw.example/ipfs/', DEFAULT_IPFS_GATEWAY],
+		['https://127.0.0.1:8080/ipfs/', DEFAULT_IPFS_GATEWAY],
+		['not a url', DEFAULT_IPFS_GATEWAY],
+	]) {
+		withGateway(value, () => assert.equal(ipfsGateway(), expected, String(value)));
+	}
+	withGateway('https://gw.example', () => {
+		assert.equal(toPublicHttpsUrl('ipfs://QmX'), 'https://gw.example/ipfs/QmX');
+		assert.equal(toPublicHttpsUrl('https://ipfs.io/ipfs/QmX'), 'https://gw.example/ipfs/QmX');
+	});
 });

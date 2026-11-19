@@ -23,8 +23,23 @@ export function redactUrl(raw) {
 // machine's network: only public HTTPS hosts on the default port are allowed,
 // redirects are re-checked hop by hop, and the body is size-capped.
 
-const IPFS_GATEWAY = 'https://ipfs.io/ipfs/';
+export const DEFAULT_IPFS_GATEWAY = 'https://gateway.pinata.cloud/ipfs/';
 const ARWEAVE_GATEWAY = 'https://arweave.net/';
+
+// Public IPFS gateways that no longer serve content: ipfs.io and dweb.link
+// switched to service-worker-only on 2026-09-21 and answer 429, w3s.link and
+// nftstorage.link redirect to them, and cloudflare-ipfs.com / cf-ipfs.com shut
+// down in 2024. Most pump.fun metadata (and the images inside it) still points
+// at ipfs.io. IPFS content is addressed by CID, so re-pointing such a URL at a
+// working gateway returns byte-identical content.
+const RETIRED_IPFS_GATEWAYS = [
+	'ipfs.io',
+	'dweb.link',
+	'w3s.link',
+	'nftstorage.link',
+	'cloudflare-ipfs.com',
+	'cf-ipfs.com',
+];
 const MAX_REDIRECTS = 3;
 export const MAX_METADATA_BYTES = 256 * 1024;
 
@@ -49,9 +64,55 @@ export function isPublicHttpsUrl(url) {
 }
 
 /**
+ * The IPFS path gateway (ending in `/ipfs/`) used for `ipfs://` references and
+ * retired-gateway URLs: PUMPFUN_IPFS_GATEWAY when it is a public https URL,
+ * otherwise DEFAULT_IPFS_GATEWAY.
+ *
+ * @returns {string}
+ */
+export function ipfsGateway() {
+	const configured = process.env.PUMPFUN_IPFS_GATEWAY;
+	if (configured) {
+		try {
+			const url = new URL(configured);
+			if (isPublicHttpsUrl(url)) {
+				const base = `${url.origin}${url.pathname}`.replace(/\/+$/, '');
+				return base.endsWith('/ipfs') ? `${base}/` : `${base}/ipfs/`;
+			}
+		} catch {
+			// fall through to the default
+		}
+	}
+	return DEFAULT_IPFS_GATEWAY;
+}
+
+/**
+ * If `url` is served by a retired public gateway, the same CID path on the
+ * working gateway; otherwise `url` unchanged. Handles path-style
+ * (`https://ipfs.io/ipfs/<cid>/x`) and subdomain-style
+ * (`https://<cid>.ipfs.dweb.link/x`) gateway URLs.
+ *
+ * @param {URL} url
+ * @returns {URL}
+ */
+function repointRetiredGateway(url) {
+	const host = url.hostname.toLowerCase();
+	const tail = `${url.search}${url.hash}`;
+	if (RETIRED_IPFS_GATEWAYS.includes(host) && url.pathname.startsWith('/ipfs/')) {
+		return new URL(ipfsGateway() + url.pathname.slice('/ipfs/'.length) + tail);
+	}
+	const sub = host.match(/^([a-z0-9]+)\.ipfs\.(.+)$/);
+	if (sub && RETIRED_IPFS_GATEWAYS.includes(sub[2])) {
+		return new URL(ipfsGateway() + sub[1] + url.pathname + tail);
+	}
+	return url;
+}
+
+/**
  * Map a token media/metadata reference to a public HTTPS URL: `ipfs://` and
- * `ar://` go through a public gateway, `https://` must pass isPublicHttpsUrl.
- * Anything else (http:, data:, javascript:, private hosts) yields null.
+ * `ar://` go through a public gateway, `https://` must pass isPublicHttpsUrl,
+ * and retired IPFS gateways are re-pointed at a working one. Anything else
+ * (http:, data:, javascript:, private hosts) yields null.
  *
  * @param {unknown} raw
  * @returns {string | null}
@@ -60,7 +121,7 @@ export function toPublicHttpsUrl(raw) {
 	if (typeof raw !== 'string') return null;
 	const value = raw.trim();
 	let candidate = value;
-	if (value.startsWith('ipfs://')) candidate = IPFS_GATEWAY + value.slice(7).replace(/^ipfs\//, '');
+	if (value.startsWith('ipfs://')) candidate = ipfsGateway() + value.slice(7).replace(/^ipfs\//, '');
 	else if (value.startsWith('ar://')) candidate = ARWEAVE_GATEWAY + value.slice(5);
 	let url;
 	try {
@@ -68,7 +129,8 @@ export function toPublicHttpsUrl(raw) {
 	} catch {
 		return null;
 	}
-	return isPublicHttpsUrl(url) ? url.href : null;
+	if (!isPublicHttpsUrl(url)) return null;
+	return repointRetiredGateway(url).href;
 }
 
 /**
