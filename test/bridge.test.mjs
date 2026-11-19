@@ -182,3 +182,32 @@ test('a non-http PUMPFUN_MCP_URL is refused before anything is sent', async () =
 	);
 	assert.deepEqual(log, []);
 });
+
+test('client cancellation aborts the in-flight backend fetch', async () => {
+	let sawAbort;
+	const aborted = new Promise((resolve) => {
+		sawAbort = resolve;
+	});
+	const fetchStub = async (url, init) => {
+		const body = JSON.parse(init.body);
+		if (body.method === 'tools/list') return backendFetch()(url, init);
+		// Hang until the bridge aborts the request, like a stalled backend.
+		return new Promise((_, reject) => {
+			init.signal.addEventListener('abort', () => {
+				sawAbort(true);
+				reject(init.signal.reason);
+			});
+		});
+	};
+	await withBridge(fetchStub, async (client) => {
+		const controller = new AbortController();
+		const call = client.callTool(
+			{ name: 'get_bonding_curve', arguments: { mint: 'm' } },
+			undefined,
+			{ signal: controller.signal },
+		);
+		setTimeout(() => controller.abort(), 20);
+		await assert.rejects(call);
+		assert.equal(await aborted, true);
+	});
+});

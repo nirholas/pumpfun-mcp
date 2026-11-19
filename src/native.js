@@ -7,15 +7,23 @@
 // still sourcing every number from the same canonical on-chain reads.
 
 import { NO_DATA, INVALID_PARAMS, ToolError } from './errors.js';
+import { deadline } from './signal.js';
 
 /** @typedef {import('@modelcontextprotocol/sdk/types.js').Tool} Tool */
 /** @typedef {Record<string, any>} Loose */
 /**
  * Invokes one backend tool and resolves its structuredContent.
- * @typedef {(name: string, args?: Record<string, unknown>) => Promise<Record<string, unknown> | null>} CallBackendTool
+ * @typedef {(name: string, args?: Record<string, unknown>, signal?: AbortSignal) => Promise<Record<string, unknown> | null>} CallBackendTool
  */
-/** @typedef {{ call: CallBackendTool, siteBase: string }} NativeContext */
+/**
+ * @typedef {object} NativeContext
+ * @property {(name: string, args?: Record<string, unknown>) => Promise<Record<string, unknown> | null>} call
+ *   Backend tool call, already bound to the request's cancellation signal.
+ * @property {string} siteBase Public site origin for viewer links.
+ * @property {AbortSignal} [signal] The MCP request's cancellation signal.
+ */
 /** @typedef {(args: Record<string, unknown>, ctx: NativeContext) => Promise<Record<string, unknown>>} NativeHandler */
+/** @typedef {(args: Record<string, unknown>, signal?: AbortSignal) => Promise<Record<string, unknown>>} NativeEntry */
 
 // Derive the public site origin (for viewer links) from the backend URL, so a
 // self-hosted backend produces self-hosted viewer links automatically.
@@ -43,20 +51,24 @@ function ipfsToHttp(url) {
 // fetch the uri JSON and read .image. Returns null rather than guessing.
 /**
  * @param {Loose} d
+ * @param {AbortSignal} [signal]
  * @returns {Promise<string | null>}
  */
-async function resolveImage(d) {
+async function resolveImage(d, signal) {
 	const direct = d.image || d.imageUrl || d.metadata?.image;
 	if (direct) return ipfsToHttp(direct);
 	const uri = ipfsToHttp(d.uri || d.metadata?.uri);
 	if (!uri) return null;
+	const limit = deadline(6000, signal);
 	try {
-		const res = await fetch(uri, { signal: AbortSignal.timeout(6000) });
+		const res = await fetch(uri, { signal: limit.signal });
 		if (!res.ok) return null;
 		const meta = /** @type {Loose | null} */ (await res.json());
 		return meta?.image ? ipfsToHttp(meta.image) : null;
 	} catch {
 		return null;
+	} finally {
+		limit.dispose();
 	}
 }
 
@@ -83,7 +95,7 @@ function pct01(v) {
 // pumpfun_token_3d — assemble a live 3D snapshot of a token and return a
 // shareable viewer deep-link plus the underlying data.
 /** @type {NativeHandler} */
-async function token3dHandler(args, { call, siteBase }) {
+async function token3dHandler(args, { call, siteBase, signal }) {
 	const mint = String(args?.mint || '').trim();
 	if (!mint) {
 		throw new ToolError('mint is required', INVALID_PARAMS);
@@ -116,7 +128,7 @@ async function token3dHandler(args, { call, siteBase }) {
 
 	const name = d.name || d.metadata?.name || null;
 	const symbol = d.symbol || d.metadata?.symbol || null;
-	const image = await resolveImage(d);
+	const image = await resolveImage(d, signal);
 
 	const q = new URLSearchParams({ mint });
 	if (network === 'devnet') q.set('network', 'devnet');
@@ -188,15 +200,17 @@ export const NATIVE_TOOLS = [
 /**
  * @param {string} backendUrl
  * @param {CallBackendTool} call
- * @returns {{ defs: Tool[], handlers: Map<string, (args: Record<string, unknown>) => Promise<Record<string, unknown>>> }}
+ * @returns {{ defs: Tool[], handlers: Map<string, NativeEntry> }}
  */
 export function buildNativeRegistry(backendUrl, call) {
 	const siteBase = siteBaseFrom(backendUrl);
 	const defs = NATIVE_TOOLS.map((t) => t.def);
-	/** @type {Map<string, (args: Record<string, unknown>) => Promise<Record<string, unknown>>>} */
+	/** @type {Map<string, NativeEntry>} */
 	const handlers = new Map();
 	for (const t of NATIVE_TOOLS) {
-		handlers.set(t.def.name, (args) => t.handler(args, { call, siteBase }));
+		handlers.set(t.def.name, (args, signal) =>
+			t.handler(args, { call: (name, a) => call(name, a, signal), siteBase, signal }),
+		);
 	}
 	return { defs, handlers };
 }

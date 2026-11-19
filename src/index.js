@@ -28,6 +28,7 @@ import { FALLBACK_TOOLS, TOOL_ANNOTATIONS } from './tools.js';
 import { buildNativeRegistry } from './native.js';
 import { INTERNAL_ERROR, ToolError, errorMessage } from './errors.js';
 import { redactUrl } from './url.js';
+import { deadline } from './signal.js';
 
 /** @typedef {import('@modelcontextprotocol/sdk/types.js').Tool} Tool */
 /** @typedef {import('@modelcontextprotocol/sdk/types.js').CallToolResult} CallToolResult */
@@ -83,6 +84,11 @@ function checkedBackendUrl() {
 }
 const SERVER_NAME = 'three.ws-pumpfun-mcp';
 
+// Upper bound for one backend round trip. The slowest backend tools
+// (pumpfun_watch_whales, pumpfun_watch_claims) collect for at most 10 s.
+const BACKEND_TIMEOUT_MS = 30_000;
+const TOOLS_LIST_TIMEOUT_MS = 10_000;
+
 // A monotonically increasing JSON-RPC id for backend calls. Local to this
 // process; the backend is stateless so any unique id works.
 let rpcId = 0;
@@ -94,26 +100,32 @@ let rpcId = 0;
  *
  * @param {string} method
  * @param {Record<string, unknown>} params
- * @param {number} [timeoutMs]
+ * @param {{ timeoutMs?: number, signal?: AbortSignal }} [options] `signal` is the
+ *   MCP request's cancellation signal; the fetch stops when the client cancels.
  * @returns {Promise<BackendEnvelope>}
  */
-async function callBackend(method, params, timeoutMs = 30_000) {
+async function callBackend(method, params, { timeoutMs = BACKEND_TIMEOUT_MS, signal } = {}) {
 	const url = checkedBackendUrl();
-	const controller = new AbortController();
-	const timer = setTimeout(() => controller.abort(), timeoutMs);
+	const limit = deadline(timeoutMs, signal);
 	try {
 		const res = await fetch(url, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json', accept: 'application/json' },
 			body: JSON.stringify({ jsonrpc: '2.0', id: ++rpcId, method, params }),
-			signal: controller.signal,
+			signal: limit.signal,
 		});
 		if (!res.ok) {
 			throw new Error(`backend ${redactUrl(url)} answered HTTP ${res.status}`);
 		}
 		return /** @type {BackendEnvelope} */ (await res.json());
+	} catch (err) {
+		if (limit.timedOut()) {
+			throw new Error(`backend ${redactUrl(url)} did not answer within ${timeoutMs / 1000} s`);
+		}
+		if (signal?.aborted) throw new Error('request cancelled by the client');
+		throw err;
 	} finally {
-		clearTimeout(timer);
+		limit.dispose();
 	}
 }
 
@@ -126,7 +138,7 @@ async function callBackend(method, params, timeoutMs = 30_000) {
  */
 async function loadTools() {
 	try {
-		const env = await callBackend('tools/list', {}, 10_000);
+		const env = await callBackend('tools/list', {}, { timeoutMs: TOOLS_LIST_TIMEOUT_MS });
 		const tools = env?.result?.tools;
 		if (Array.isArray(tools) && tools.length > 0) return /** @type {Tool[]} */ (tools);
 	} catch (err) {
@@ -159,10 +171,11 @@ function firstText(content) {
  *
  * @param {string} name
  * @param {Record<string, unknown>} [args]
+ * @param {AbortSignal} [signal]
  * @returns {Promise<Record<string, unknown> | null>}
  */
-async function callTool(name, args) {
-	const env = await callBackend('tools/call', { name, arguments: args || {} });
+async function callTool(name, args, signal) {
+	const env = await callBackend('tools/call', { name, arguments: args || {} }, { signal });
 	if (env?.error) {
 		throw new ToolError(env.error.message || `${name} failed`, env.error.code);
 	}
@@ -223,14 +236,14 @@ export async function buildServer() {
 
 	server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
 
-	server.setRequestHandler(CallToolRequestSchema, async (request) => {
+	server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
 		const { name, arguments: args } = request.params;
 
 		// Native composed tools run in-process (they orchestrate backend reads).
 		const nativeHandler = native.handlers.get(name);
 		if (nativeHandler) {
 			try {
-				const data = await nativeHandler(args || {});
+				const data = await nativeHandler(args || {}, extra.signal);
 				return {
 					content: [{ type: 'text', text: JSON.stringify(data) }],
 					structuredContent: data,
@@ -246,7 +259,11 @@ export async function buildServer() {
 
 		let env;
 		try {
-			env = await callBackend('tools/call', { name, arguments: args || {} });
+			env = await callBackend(
+				'tools/call',
+				{ name, arguments: args || {} },
+				{ signal: extra.signal },
+			);
 		} catch (err) {
 			return {
 				isError: true,
