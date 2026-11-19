@@ -32,7 +32,7 @@ import {
 import { FALLBACK_TOOLS, TOOL_ANNOTATIONS, resolveToolName } from './tools.js';
 import { buildNativeRegistry } from './native.js';
 import { INTERNAL_ERROR, ToolError, errorMessage } from './errors.js';
-import { redactUrl } from './url.js';
+import { redactUrl, scrubUrls } from './url.js';
 import { deadline } from './signal.js';
 
 /** @typedef {import('@modelcontextprotocol/sdk/types.js').Tool} Tool */
@@ -169,6 +169,21 @@ function firstText(content) {
 }
 
 /**
+ * Error results are free text written by the backend; strip upstream URLs from
+ * their text blocks (see scrubUrls). Successful results pass through untouched.
+ *
+ * @param {CallToolResult['content']} content
+ * @returns {CallToolResult['content']}
+ */
+function scrubErrorContent(content) {
+	return content.map((block) =>
+		block?.type === 'text' && typeof block.text === 'string'
+			? { ...block, text: scrubUrls(block.text) }
+			: block,
+	);
+}
+
+/**
  * Invoke a single backend tool and return its unwrapped structuredContent.
  * Throws on a JSON-RPC error envelope or an `isError` tool result so native
  * composers can treat an individual source as unavailable
@@ -182,10 +197,10 @@ function firstText(content) {
 async function callTool(name, args, signal) {
 	const env = await callBackend('tools/call', { name, arguments: args || {} }, { signal });
 	if (env?.error) {
-		throw new ToolError(env.error.message || `${name} failed`, env.error.code);
+		throw new ToolError(scrubUrls(env.error.message || `${name} failed`), env.error.code);
 	}
 	if (env?.result?.isError) {
-		throw new ToolError(firstText(env.result.content) || `${name} failed`, INTERNAL_ERROR);
+		throw new ToolError(scrubUrls(firstText(env.result.content) || `${name} failed`), INTERNAL_ERROR);
 	}
 	return env?.result?.structuredContent ?? null;
 }
@@ -326,7 +341,7 @@ export async function buildServer() {
 				content: [
 					{
 						type: 'text',
-						text: `[${env.error.code}] ${env.error.message || 'tool error'}`,
+						text: `[${env.error.code}] ${scrubUrls(env.error.message || 'tool error')}`,
 					},
 				],
 			};
@@ -338,7 +353,7 @@ export async function buildServer() {
 			// through, including isError: a tool-execution failure must reach the
 			// client as a failure, not as a successful result carrying error text.
 			return {
-				content: result.content,
+				content: result.isError === true ? scrubErrorContent(result.content) : result.content,
 				...(result.structuredContent !== undefined
 					? { structuredContent: result.structuredContent }
 					: {}),

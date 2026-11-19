@@ -12,6 +12,7 @@ import {
 	fetchPublicJson,
 	ipfsGateway,
 	isPublicHttpsUrl,
+	scrubUrls,
 	toPublicHttpsUrl,
 } from '../src/url.js';
 
@@ -210,4 +211,16 @@ test('PUMPFUN_IPFS_GATEWAY overrides the gateway only when it is a public https 
 		assert.equal(toPublicHttpsUrl('ipfs://QmX'), 'https://gw.example/ipfs/QmX');
 		assert.equal(toPublicHttpsUrl('https://ipfs.io/ipfs/QmX'), 'https://gw.example/ipfs/QmX');
 	});
+});
+
+test('scrubUrls reduces every embedded URL to its origin', () => {
+	assert.equal(
+		scrubUrls('holders unavailable: solana rpc 429 @ https://mainnet.helius-rpc.com/?api-key=sk-123'),
+		'holders unavailable: solana rpc 429 @ https://mainnet.helius-rpc.com',
+	);
+	assert.equal(
+		scrubUrls('a (https://u:p@x.example/k/abc) and "http://y.example:8899/t?k=1", done'),
+		'a (https://x.example) and "http://y.example:8899", done',
+	);
+	assert.equal(scrubUrls('no urls here'), 'no urls here');
 });

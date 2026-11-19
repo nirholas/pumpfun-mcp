@@ -206,3 +206,16 @@ export async function fetchPublicJson(raw, { signal, maxBytes = MAX_METADATA_BYT
 	}
 	return null;
 }
+
+/**
+ * Replace every http(s) URL in free text with its origin. Backend error text
+ * can embed the URL of an upstream service (for example
+ * "solana rpc 429 @ https://rpc.example/?api-key=..."), and that text is
+ * shown to the model, so keys in paths or query strings must not survive.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+export function scrubUrls(text) {
+	return text.replace(/\bhttps?:\/\/[^\s"'<>`)\]]+/gi, (match) => redactUrl(match));
+}

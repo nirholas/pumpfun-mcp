@@ -312,3 +312,22 @@ test('pumpfun_vanity_mint runs locally: listed once, never sent to the backend',
 	});
 	assert.deepEqual(log.filter((b) => b.method === 'tools/call'), []);
 });
+
+test('upstream URLs in backend error text are reduced to their origin', async () => {
+	const leaky = 'holders unavailable: solana rpc 429 @ https://rpc.example/v2/sk-live-1?api-key=abc';
+	const fetchStub = backendFetch({
+		onCall: async (name) =>
+			name === 'get_bonding_curve'
+				? { error: { code: -32004, message: leaky } }
+				: { result: { isError: true, content: [{ type: 'text', text: leaky }] } },
+	});
+	await withBridge(fetchStub, async (client) => {
+		for (const name of ['get_bonding_curve', 'get_token_holders']) {
+			const res = await client.callTool({ name, arguments: { mint: 'm' } });
+			assert.equal(res.isError, true);
+			assert.match(res.content[0].text, /429 @ https:\/\/rpc\.example$/);
+			assert.ok(!res.content[0].text.includes('sk-live-1'));
+			assert.ok(!res.content[0].text.includes('api-key'));
+		}
+	});
+});
