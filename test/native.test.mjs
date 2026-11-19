@@ -52,7 +52,7 @@ test('buildNativeRegistry exposes pumpfun_token_3d with a bound handler', () => 
 test('pumpfun_token_3d requires a non-blank mint (invalid params → rpcCode -32602)', async () => {
 	const { handlers } = buildNativeRegistry(BACKEND, stubCall({}));
 	const handler = handlers.get('pumpfun_token_3d');
-	for (const args of [{}, { mint: '' }, { mint: '   ' }]) {
+	for (const args of [{}, { mint: '' }, { mint: '   ' }, { mint: 42 }]) {
 		await assert.rejects(handler(args), (err) => {
 			assert.match(err.message, /mint is required/);
 			assert.equal(err.rpcCode, -32602);
@@ -61,13 +61,40 @@ test('pumpfun_token_3d requires a non-blank mint (invalid params → rpcCode -32
 	}
 });
 
+test('pumpfun_token_3d rejects a malformed mint before any backend read', async () => {
+	const log = [];
+	const { handlers } = buildNativeRegistry(BACKEND, stubCall({}, log));
+	const handler = handlers.get('pumpfun_token_3d');
+	for (const mint of ['notamint', '../../admin', `${MINT}x`, 'O'.repeat(44)]) {
+		await assert.rejects(handler({ mint }), (err) => {
+			assert.match(err.message, /base58 Solana address/);
+			assert.equal(err.rpcCode, -32602);
+			return true;
+		});
+	}
+	assert.deepEqual(log, [], 'no backend call for an invalid mint');
+});
+
 test('success path composes the three backend reads with the exact args', async () => {
 	const log = [];
 	const call = stubCall(
 		{
-			getTokenDetails: { name: 'Three', symbol: 'three', image: 'https://cdn.example/logo.png' },
-			getBondingCurve: { complete: false, graduationProgress: 55 },
-			getTokenHolders: { topHolderPercent: 12.5, holders: [{ address: 'A', percent: 12.5 }] },
+			get_token_details: {
+				name: 'Three',
+				symbol: 'three',
+				image: 'https://cdn.example/logo.png',
+				decimals: 6,
+				supply: '1000000000000000',
+			},
+			get_bonding_curve: { complete: false, graduationPercent: 55 },
+			// The backend's `percent` is a share of the returned holders only.
+			get_token_holders: {
+				topHolderPercent: 80,
+				holders: [
+					{ address: 'A', amount: '125000000000000', percent: 80 },
+					{ address: 'B', amount: '31250000000000', percent: 20 },
+				],
+			},
 		},
 		log,
 	);
@@ -75,9 +102,9 @@ test('success path composes the three backend reads with the exact args', async 
 	const out = await withFetch(noFetch, () => handlers.get('pumpfun_token_3d')({ mint: MINT }));
 
 	assert.deepEqual(log, [
-		{ name: 'getTokenDetails', args: { mint: MINT } },
-		{ name: 'getBondingCurve', args: { mint: MINT, network: 'mainnet' } },
-		{ name: 'getTokenHolders', args: { mint: MINT, limit: 12, network: 'mainnet' } },
+		{ name: 'get_token_details', args: { mint: MINT } },
+		{ name: 'get_bonding_curve', args: { mint: MINT, network: 'mainnet' } },
+		{ name: 'get_token_holders', args: { mint: MINT, limit: 12, network: 'mainnet' } },
 	]);
 
 	assert.equal(out.mint, MINT);
@@ -86,14 +113,18 @@ test('success path composes the three backend reads with the exact args', async 
 	assert.equal(out.symbol, 'THREE', 'symbol must be uppercased');
 	assert.equal(out.image, 'https://cdn.example/logo.png');
 	assert.equal(out.graduated, false);
-	// 55 > 1 → interpreted as a percentage and normalized to 0–1.
+	// graduationPercent is 0–100 by contract; the snapshot reports a 0–1 fraction.
 	assert.equal(out.graduationProgress, 0.55);
+	// Measured against total supply, not against the returned holders.
 	assert.equal(out.topHolderPercent, 12.5);
-	assert.deepEqual(out.topHolders, [{ address: 'A', percent: 12.5 }]);
+	assert.deepEqual(out.topHolders, [
+		{ address: 'A', amount: '125000000000000', percent: 80, percentOfSupply: 12.5 },
+		{ address: 'B', amount: '31250000000000', percent: 20, percentOfSupply: 3.125 },
+	]);
 	assert.equal(out.viewerUrl, `https://three.ws/coin3d?mint=${MINT}`);
 	assert.ok(out.embedHtml.includes(out.viewerUrl), 'embed iframe must point at the viewer');
 	assert.match(out.rendering.coin, /token logo/);
-	assert.match(out.rendering.holderGalaxy, /^1 top holders/);
+	assert.match(out.rendering.holderGalaxy, /^2 top holders/);
 	assert.match(out.rendering.graduationRing, /arc filled/);
 });
 
@@ -101,9 +132,9 @@ test('devnet network propagates to every read and into the viewer link', async (
 	const log = [];
 	const call = stubCall(
 		{
-			getTokenDetails: { name: 'Dev', symbol: 'dev' },
-			getBondingCurve: { complete: true },
-			getTokenHolders: { holders: [] },
+			get_token_details: { name: 'Dev', symbol: 'dev' },
+			get_bonding_curve: { complete: true },
+			get_token_holders: { holders: [] },
 		},
 		log,
 	);
@@ -120,7 +151,7 @@ test('devnet network propagates to every read and into the viewer link', async (
 
 test('an unrecognized network value coerces to mainnet, never a third network', async () => {
 	const log = [];
-	const call = stubCall({ getTokenDetails: { name: 'X' } }, log);
+	const call = stubCall({ get_token_details: { name: 'X' } }, log);
 	const { handlers } = buildNativeRegistry(BACKEND, call);
 	const out = await withFetch(noFetch, () =>
 		handlers.get('pumpfun_token_3d')({ mint: MINT, network: 'testnet' }),
@@ -130,7 +161,7 @@ test('an unrecognized network value coerces to mainnet, never a third network', 
 });
 
 test('viewer origin derives from the backend URL; a bad URL falls back to three.ws', async () => {
-	const fixtures = { getTokenDetails: { name: 'X' } };
+	const fixtures = { get_token_details: { name: 'X' } };
 	const selfHosted = buildNativeRegistry('https://staging.example.com/api/pump-fun-mcp', stubCall(fixtures));
 	const out1 = await withFetch(noFetch, () =>
 		selfHosted.handlers.get('pumpfun_token_3d')({ mint: MINT }),
@@ -155,41 +186,45 @@ test('all three sources failing surfaces one -32004 error naming the mint', asyn
 
 test('a single failed source degrades gracefully instead of failing the snapshot', async () => {
 	const call = stubCall({
-		// getTokenDetails missing → rejected
-		getBondingCurve: { complete: false, graduationProgress: 0.4 },
-		getTokenHolders: { holders: [{ address: 'B' }, { address: 'C' }] },
+		// get_token_details missing → rejected
+		get_bonding_curve: { complete: false, graduationPercent: 40 },
+		get_token_holders: { holders: [{ address: 'B' }, { address: 'C' }] },
 	});
 	const { handlers } = buildNativeRegistry(BACKEND, call);
 	const out = await withFetch(noFetch, () => handlers.get('pumpfun_token_3d')({ mint: MINT }));
 	assert.equal(out.name, null);
 	assert.equal(out.symbol, null);
 	assert.equal(out.image, null);
-	assert.equal(out.graduationProgress, 0.4, 'values already in 0–1 pass through');
+	assert.equal(out.graduationProgress, 0.4);
+	assert.equal(out.topHolderPercent, null, 'no supply → no share of supply, never a guess');
 	assert.match(out.rendering.holderGalaxy, /^2 top holders/);
 	assert.match(out.rendering.coin, /no logo found/);
 });
 
 test('graduationProgress is clamped to [0,1] and marketCapUsd rejects non-numbers', async () => {
 	const cases = [
-		{ progress: 150, expected: 1 },
-		{ progress: -5, expected: 0 },
-		{ progress: 'not-a-number', expected: null },
+		{ percent: 150, expected: 1 },
+		{ percent: -5, expected: 0 },
+		// 0.5 % is half a percent, not 50 %: the field is always 0–100.
+		{ percent: 0.5, expected: 0.005 },
+		{ percent: 'not-a-number', expected: null },
+		{ percent: null, expected: null },
 	];
-	for (const { progress, expected } of cases) {
+	for (const { percent, expected } of cases) {
 		const call = stubCall({
-			getTokenDetails: { name: 'X', market_cap: 'NaN-ish' },
-			getBondingCurve: { graduationProgress: progress },
+			get_token_details: { name: 'X', market_cap: 'NaN-ish' },
+			get_bonding_curve: { complete: false, graduationPercent: percent },
 		});
 		const { handlers } = buildNativeRegistry(BACKEND, call);
 		const out = await withFetch(noFetch, () => handlers.get('pumpfun_token_3d')({ mint: MINT }));
-		assert.equal(out.graduationProgress, expected, `progress ${progress}`);
+		assert.equal(out.graduationProgress, expected, `percent ${percent}`);
 		assert.equal(out.marketCapUsd, null);
 	}
 });
 
 test('marketCapUsd falls back across the alternate field spellings', async () => {
 	for (const details of [{ marketCapUsd: 100 }, { usdMarketCap: 200 }, { market_cap: '300' }]) {
-		const call = stubCall({ getTokenDetails: details });
+		const call = stubCall({ get_token_details: details });
 		const { handlers } = buildNativeRegistry(BACKEND, call);
 		const out = await withFetch(noFetch, () => handlers.get('pumpfun_token_3d')({ mint: MINT }));
 		assert.equal(out.marketCapUsd, Object.values(details).map(Number)[0]);
@@ -197,7 +232,7 @@ test('marketCapUsd falls back across the alternate field spellings', async () =>
 });
 
 test('a direct ipfs:// image field is rewritten to an HTTP gateway without fetching', async () => {
-	const call = stubCall({ getTokenDetails: { image: 'ipfs://QmHash/logo.png' } });
+	const call = stubCall({ get_token_details: { image: 'ipfs://QmHash/logo.png' } });
 	const { handlers } = buildNativeRegistry(BACKEND, call);
 	const out = await withFetch(noFetch, () => handlers.get('pumpfun_token_3d')({ mint: MINT }));
 	assert.equal(out.image, 'https://ipfs.io/ipfs/QmHash/logo.png');
@@ -212,7 +247,7 @@ test('the image resolves through the metadata uri JSON when no direct field exis
 			headers: { 'content-type': 'application/json' },
 		});
 	};
-	const call = stubCall({ getTokenDetails: { uri: 'ipfs://QmJson/meta.json' } });
+	const call = stubCall({ get_token_details: { uri: 'ipfs://QmJson/meta.json' } });
 	const { handlers } = buildNativeRegistry(BACKEND, call);
 	const out = await withFetch(fetchStub, () => handlers.get('pumpfun_token_3d')({ mint: MINT }));
 	assert.deepEqual(fetched, ['https://ipfs.io/ipfs/QmJson/meta.json']);
@@ -220,7 +255,7 @@ test('the image resolves through the metadata uri JSON when no direct field exis
 });
 
 test('metadata uri failures (HTTP error, network error) yield image:null, not a throw', async () => {
-	const call = stubCall({ getTokenDetails: { uri: 'https://meta.example/x.json' } });
+	const call = stubCall({ get_token_details: { uri: 'https://meta.example/x.json' } });
 	const { handlers } = buildNativeRegistry(BACKEND, call);
 
 	const on404 = await withFetch(
@@ -236,4 +271,21 @@ test('metadata uri failures (HTTP error, network error) yield image:null, not a 
 		() => handlers.get('pumpfun_token_3d')({ mint: MINT }),
 	);
 	assert.equal(onNetworkError.image, null);
+});
+
+test('a completed curve reads as fully graduated regardless of graduationPercent', async () => {
+	const call = stubCall({ get_bonding_curve: { complete: true, graduationPercent: 100 } });
+	const { handlers } = buildNativeRegistry(BACKEND, call);
+	const out = await withFetch(noFetch, () => handlers.get('pumpfun_token_3d')({ mint: MINT }));
+	assert.equal(out.graduated, true);
+	assert.equal(out.graduationProgress, 1);
+	assert.match(out.rendering.graduationRing, /PumpSwap/);
+});
+
+test('non-string name and symbol fields are ignored rather than thrown on', async () => {
+	const call = stubCall({ get_token_details: { name: 7, symbol: { x: 1 } } });
+	const { handlers } = buildNativeRegistry(BACKEND, call);
+	const out = await withFetch(noFetch, () => handlers.get('pumpfun_token_3d')({ mint: MINT }));
+	assert.equal(out.name, null);
+	assert.equal(out.symbol, null);
 });
