@@ -116,9 +116,24 @@ async function loadTools() {
 }
 
 /**
+ * The first text block of an MCP content array, if any.
+ *
+ * @param {CallToolResult['content'] | undefined} content
+ * @returns {string | undefined}
+ */
+function firstText(content) {
+	if (!Array.isArray(content)) return undefined;
+	for (const block of content) {
+		if (block?.type === 'text' && typeof block.text === 'string') return block.text;
+	}
+	return undefined;
+}
+
+/**
  * Invoke a single backend tool and return its unwrapped structuredContent.
- * Throws on a JSON-RPC error envelope so native composers can treat an
- * individual source as unavailable (Promise.allSettled) without faking data.
+ * Throws on a JSON-RPC error envelope or an `isError` tool result so native
+ * composers can treat an individual source as unavailable
+ * (Promise.allSettled) without faking data.
  *
  * @param {string} name
  * @param {Record<string, unknown>} [args]
@@ -128,6 +143,9 @@ async function callTool(name, args) {
 	const env = await callBackend('tools/call', { name, arguments: args || {} });
 	if (env?.error) {
 		throw new ToolError(env.error.message || `${name} failed`, env.error.code);
+	}
+	if (env?.result?.isError) {
+		throw new ToolError(firstText(env.result.content) || `${name} failed`, INTERNAL_ERROR);
 	}
 	return env?.result?.structuredContent ?? null;
 }
@@ -231,12 +249,15 @@ export async function buildServer() {
 
 		const result = env?.result;
 		if (result?.content) {
-			// Backend already returns MCP content + structuredContent — pass through.
+			// Backend already returns MCP content + structuredContent — pass
+			// through, including isError: a tool-execution failure must reach the
+			// client as a failure, not as a successful result carrying error text.
 			return {
 				content: result.content,
 				...(result.structuredContent !== undefined
 					? { structuredContent: result.structuredContent }
 					: {}),
+				...(result.isError === true ? { isError: true } : {}),
 			};
 		}
 
