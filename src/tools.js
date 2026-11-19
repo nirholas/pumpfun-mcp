@@ -40,6 +40,9 @@
 // with DIFFERENT widths, that happen to share a name. A coin has one or the
 // other, never both.
 
+/** @typedef {import('@modelcontextprotocol/sdk/types.js').Tool} Tool */
+/** @typedef {import('@modelcontextprotocol/sdk/types.js').ToolAnnotations & { title: string }} TitledAnnotations */
+
 // ── MCP ToolAnnotations (readOnlyHint/destructiveHint/idempotentHint/
 // openWorldHint). Every tool on this surface is read-only — nothing signs or
 // sends a transaction. destructiveHint defaults to TRUE in the spec when
@@ -82,6 +85,7 @@ const LOCAL_GENERATIVE = Object.freeze({
 // tools/list only advertises canonical names; tools/call accepts BOTH forever.
 // Vendored copy of TOOL_NAME_ALIASES from src/pump/mcp-tools.js in the
 // three.ws repo — that file is the single source of truth.
+/** @type {Readonly<Record<string, string>>} */
 export const TOOL_NAME_ALIASES = Object.freeze({
 	searchTokens: 'search_tokens',
 	getTokenDetails: 'get_token_details',
@@ -95,6 +99,7 @@ export const TOOL_NAME_ALIASES = Object.freeze({
 	getTokenHolders: 'get_token_holders',
 });
 
+/** @type {Readonly<Record<string, string>>} */
 const CANONICAL_TO_LEGACY = Object.freeze(
 	Object.fromEntries(
 		Object.entries(TOOL_NAME_ALIASES).map(([legacy, canonical]) => [canonical, legacy]),
@@ -104,6 +109,10 @@ const CANONICAL_TO_LEGACY = Object.freeze(
 // Resolve a tool name to its canonical (snake_case) form. Unknown names pass
 // through unchanged. hasOwn guard: "__proto__"/"constructor" must not resolve
 // an inherited member.
+/**
+ * @param {unknown} name
+ * @returns {unknown}
+ */
 export function resolveToolName(name) {
 	if (typeof name === 'string' && Object.hasOwn(TOOL_NAME_ALIASES, name)) {
 		return TOOL_NAME_ALIASES[name];
@@ -115,6 +124,10 @@ export function resolveToolName(name) {
 // canonical), or null when the name has no alias. Used by the bridge to retry
 // a tools/call once against an older or newer deployed backend that only
 // understands one spelling.
+/**
+ * @param {unknown} name
+ * @returns {string | null}
+ */
 export function alternateToolName(name) {
 	if (typeof name !== 'string') return null;
 	if (Object.hasOwn(TOOL_NAME_ALIASES, name)) return TOOL_NAME_ALIASES[name];
@@ -127,6 +140,7 @@ export function alternateToolName(name) {
 // annotations render even against an older deployed backend. Keys are the
 // canonical snake_case names — overlay callers resolve legacy names through
 // resolveToolName first.
+/** @type {Readonly<Record<string, TitledAnnotations>>} */
 export const TOOL_ANNOTATIONS = Object.freeze({
 	search_tokens: { title: 'Search Tokens', ...LIVE_READ },
 	get_token_details: { title: 'Token Details', ...LIVE_READ },
@@ -156,6 +170,7 @@ export const TOOL_ANNOTATIONS = Object.freeze({
 // response shape is code-controlled and genuinely stable advertise one.
 // Upstream-shaped passthrough feeds deliberately ship NO outputSchema — a
 // wrong schema is worse than none.
+/** @type {Tool[]} */
 export const FALLBACK_TOOLS = [
 	{
 		name: 'search_tokens',

@@ -6,7 +6,7 @@ Thanks for helping. Small, focused changes land fastest.
 
 - **Report a bug** with the [bug form](https://github.com/nirholas/pumpfun-mcp/issues/new?template=bug.yml). Include the version, your Node version and the smallest reproduction you can.
 - **Propose a feature** with the [feature form](https://github.com/nirholas/pumpfun-mcp/issues/new?template=feature.yml). Describe the problem first, then the change.
-- **Fix something** with a pull request. Run the tests before you open it.
+- **Fix something** with a pull request. Run `npm run check` (lint, typecheck, tests) before you open it.
 
 ## Local setup
 
@@ -14,7 +14,7 @@ Thanks for helping. Small, focused changes land fastest.
 git clone https://github.com/nirholas/pumpfun-mcp.git
 cd pumpfun-mcp
 npm install
-npm test
+npm run check
 ```
 
 ## Pull requests

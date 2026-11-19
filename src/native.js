@@ -6,8 +6,20 @@
 // useful the moment it's installed, with no backend deploy required, while
 // still sourcing every number from the same canonical on-chain reads.
 
+import { NO_DATA, INVALID_PARAMS, ToolError } from './errors.js';
+
+/** @typedef {import('@modelcontextprotocol/sdk/types.js').Tool} Tool */
+/** @typedef {Record<string, any>} Loose */
+/**
+ * Invokes one backend tool and resolves its structuredContent.
+ * @typedef {(name: string, args?: Record<string, unknown>) => Promise<Record<string, unknown> | null>} CallBackendTool
+ */
+/** @typedef {{ call: CallBackendTool, siteBase: string }} NativeContext */
+/** @typedef {(args: Record<string, unknown>, ctx: NativeContext) => Promise<Record<string, unknown>>} NativeHandler */
+
 // Derive the public site origin (for viewer links) from the backend URL, so a
 // self-hosted backend produces self-hosted viewer links automatically.
+/** @param {string} backendUrl */
 function siteBaseFrom(backendUrl) {
 	try {
 		return new URL(backendUrl).origin;
@@ -16,6 +28,10 @@ function siteBaseFrom(backendUrl) {
 	}
 }
 
+/**
+ * @param {unknown} url
+ * @returns {string | null}
+ */
 function ipfsToHttp(url) {
 	if (typeof url !== 'string') return null;
 	if (url.startsWith('ipfs://')) return `https://ipfs.io/ipfs/${url.slice(7)}`;
@@ -25,26 +41,38 @@ function ipfsToHttp(url) {
 // The token logo lives in the off-chain metadata JSON pointed to by the
 // on-chain `uri`. Resolve it best-effort: a direct image field wins, otherwise
 // fetch the uri JSON and read .image. Returns null rather than guessing.
+/**
+ * @param {Loose} d
+ * @returns {Promise<string | null>}
+ */
 async function resolveImage(d) {
 	const direct = d.image || d.imageUrl || d.metadata?.image;
 	if (direct) return ipfsToHttp(direct);
-	const uri = d.uri || d.metadata?.uri;
+	const uri = ipfsToHttp(d.uri || d.metadata?.uri);
 	if (!uri) return null;
 	try {
-		const res = await fetch(ipfsToHttp(uri), { signal: AbortSignal.timeout(6000) });
+		const res = await fetch(uri, { signal: AbortSignal.timeout(6000) });
 		if (!res.ok) return null;
-		const meta = await res.json();
+		const meta = /** @type {Loose | null} */ (await res.json());
 		return meta?.image ? ipfsToHttp(meta.image) : null;
 	} catch {
 		return null;
 	}
 }
 
+/**
+ * @param {unknown} v
+ * @returns {number | null}
+ */
 function num(v) {
 	const n = Number(v);
 	return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * @param {unknown} v
+ * @returns {number | null}
+ */
 function pct01(v) {
 	const n = num(v);
 	if (n === null) return null;
@@ -54,12 +82,11 @@ function pct01(v) {
 
 // pumpfun_token_3d — assemble a live 3D snapshot of a token and return a
 // shareable viewer deep-link plus the underlying data.
+/** @type {NativeHandler} */
 async function token3dHandler(args, { call, siteBase }) {
 	const mint = String(args?.mint || '').trim();
 	if (!mint) {
-		const err = new Error('mint is required');
-		err.rpcCode = -32602;
-		throw err;
+		throw new ToolError('mint is required', INVALID_PARAMS);
 	}
 	const network = args?.network === 'devnet' ? 'devnet' : 'mainnet';
 
@@ -69,8 +96,11 @@ async function token3dHandler(args, { call, siteBase }) {
 		call('getTokenHolders', { mint, limit: 12, network }),
 	]);
 
+	/** @type {Loose} */
 	const d = details.status === 'fulfilled' ? details.value || {} : {};
+	/** @type {Loose | null} */
 	const c = curve.status === 'fulfilled' ? curve.value || null : null;
+	/** @type {Loose | null} */
 	const h = holders.status === 'fulfilled' ? holders.value || null : null;
 
 	if (
@@ -78,11 +108,10 @@ async function token3dHandler(args, { call, siteBase }) {
 		curve.status === 'rejected' &&
 		holders.status === 'rejected'
 	) {
-		const err = new Error(
+		throw new ToolError(
 			`no on-chain data for ${mint}: ${details.reason?.message || 'unavailable'}`,
+			NO_DATA,
 		);
-		err.rpcCode = -32004;
-		throw err;
 	}
 
 	const name = d.name || d.metadata?.name || null;
@@ -111,7 +140,7 @@ async function token3dHandler(args, { call, siteBase }) {
 				? 'token logo textured onto a spinning 3D medallion'
 				: 'brand-tinted disc (no logo found)',
 			holderGalaxy:
-				(h?.holders?.length || 0) > 0
+				h && Array.isArray(h.holders) && h.holders.length > 0
 					? `${h.holders.length} top holders as balance-sized, concentration-tinted orbiting spheres`
 					: 'no holder data available',
 			graduationRing: c
@@ -123,6 +152,7 @@ async function token3dHandler(args, { call, siteBase }) {
 	};
 }
 
+/** @type {{ def: Tool, handler: NativeHandler }[]} */
 export const NATIVE_TOOLS = [
 	{
 		def: {
@@ -155,11 +185,18 @@ export const NATIVE_TOOLS = [
 	},
 ];
 
+/**
+ * @param {string} backendUrl
+ * @param {CallBackendTool} call
+ * @returns {{ defs: Tool[], handlers: Map<string, (args: Record<string, unknown>) => Promise<Record<string, unknown>>> }}
+ */
 export function buildNativeRegistry(backendUrl, call) {
 	const siteBase = siteBaseFrom(backendUrl);
 	const defs = NATIVE_TOOLS.map((t) => t.def);
-	const handlers = new Map(
-		NATIVE_TOOLS.map((t) => [t.def.name, (args) => t.handler(args, { call, siteBase })]),
-	);
+	/** @type {Map<string, (args: Record<string, unknown>) => Promise<Record<string, unknown>>>} */
+	const handlers = new Map();
+	for (const t of NATIVE_TOOLS) {
+		handlers.set(t.def.name, (args) => t.handler(args, { call, siteBase }));
+	}
 	return { defs, handlers };
 }

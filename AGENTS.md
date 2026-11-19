@@ -20,12 +20,15 @@ Full usage, tool list and configuration are in [README.md](README.md). Machine-r
 
 ```bash
 npm install
-npm test
+npm run check
 ```
 
 Scripts:
 - `npm run start`: `node src/index.js`
-- `npm run test`: `node --test "test/**/*.test.mjs"`
+- `npm run test`: `node --test test/*.test.mjs` (offline; every network call is stubbed)
+- `npm run lint`: ESLint over the sources, tests and examples
+- `npm run typecheck`: `tsc` in strict `checkJs` mode over `src/` (types are JSDoc)
+- `npm run check`: lint, typecheck and test, the same steps CI runs
 - `npm run inspect`: `npx -y @modelcontextprotocol/inspector node src/index.js`
 
 ## Conventions

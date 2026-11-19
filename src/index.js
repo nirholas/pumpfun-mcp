@@ -26,6 +26,27 @@ import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprot
 
 import { FALLBACK_TOOLS, TOOL_ANNOTATIONS } from './tools.js';
 import { buildNativeRegistry } from './native.js';
+import { INTERNAL_ERROR, ToolError, errorMessage } from './errors.js';
+
+/** @typedef {import('@modelcontextprotocol/sdk/types.js').Tool} Tool */
+/** @typedef {import('@modelcontextprotocol/sdk/types.js').CallToolResult} CallToolResult */
+
+/**
+ * A JSON-RPC 2.0 response envelope from the backend. Only the members the
+ * bridge reads are typed; everything else passes through untouched.
+ *
+ * @typedef {object} BackendEnvelope
+ * @property {{ code: number, message?: string, data?: unknown }} [error]
+ * @property {BackendResult} [result]
+ */
+
+/**
+ * @typedef {object} BackendResult
+ * @property {unknown} [tools]
+ * @property {CallToolResult['content']} [content]
+ * @property {Record<string, unknown>} [structuredContent]
+ * @property {boolean} [isError]
+ */
 
 const require = createRequire(import.meta.url);
 const { version: SERVER_VERSION } = require('../package.json');
@@ -44,9 +65,16 @@ const SERVER_NAME = 'three.ws-pumpfun-mcp';
 // process; the backend is stateless so any unique id works.
 let rpcId = 0;
 
-// Post a JSON-RPC 2.0 request to the canonical backend and return its parsed
-// envelope. Throws on transport-level failure (network, non-2xx, bad JSON) so
-// callers surface a real error rather than a fabricated payload.
+/**
+ * Post a JSON-RPC 2.0 request to the canonical backend and return its parsed
+ * envelope. Throws on transport-level failure (network, non-2xx, bad JSON) so
+ * callers surface a real error rather than a fabricated payload.
+ *
+ * @param {string} method
+ * @param {Record<string, unknown>} params
+ * @param {number} [timeoutMs]
+ * @returns {Promise<BackendEnvelope>}
+ */
 async function callBackend(method, params, timeoutMs = 30_000) {
 	const url = backendUrl();
 	const controller = new AbortController();
@@ -61,45 +89,58 @@ async function callBackend(method, params, timeoutMs = 30_000) {
 		if (!res.ok) {
 			throw new Error(`backend ${url} answered HTTP ${res.status}`);
 		}
-		return await res.json();
+		return /** @type {BackendEnvelope} */ (await res.json());
 	} finally {
 		clearTimeout(timer);
 	}
 }
 
-// Fetch the authoritative tool list from the backend. Falls back to the
-// vendored static surface if the backend is unreachable at startup, so a
-// fresh install still advertises correct tools offline.
+/**
+ * Fetch the authoritative tool list from the backend. Falls back to the
+ * vendored static surface if the backend is unreachable at startup, so a
+ * fresh install still advertises correct tools offline.
+ *
+ * @returns {Promise<Tool[]>}
+ */
 async function loadTools() {
 	try {
 		const env = await callBackend('tools/list', {}, 10_000);
 		const tools = env?.result?.tools;
-		if (Array.isArray(tools) && tools.length > 0) return tools;
+		if (Array.isArray(tools) && tools.length > 0) return /** @type {Tool[]} */ (tools);
 	} catch (err) {
 		process.stderr.write(
-			`[pumpfun-mcp] tools/list unreachable (${err.message}); using bundled tool list\n`,
+			`[pumpfun-mcp] tools/list unreachable (${errorMessage(err)}); using bundled tool list\n`,
 		);
 	}
 	return FALLBACK_TOOLS;
 }
 
-// Invoke a single backend tool and return its unwrapped structuredContent.
-// Throws on a JSON-RPC error envelope so native composers can treat an
-// individual source as unavailable (Promise.allSettled) without faking data.
+/**
+ * Invoke a single backend tool and return its unwrapped structuredContent.
+ * Throws on a JSON-RPC error envelope so native composers can treat an
+ * individual source as unavailable (Promise.allSettled) without faking data.
+ *
+ * @param {string} name
+ * @param {Record<string, unknown>} [args]
+ * @returns {Promise<Record<string, unknown> | null>}
+ */
 async function callTool(name, args) {
 	const env = await callBackend('tools/call', { name, arguments: args || {} });
 	if (env?.error) {
-		const err = new Error(env.error.message || `${name} failed`);
-		err.rpcCode = env.error.code;
-		throw err;
+		throw new ToolError(env.error.message || `${name} failed`, env.error.code);
 	}
 	return env?.result?.structuredContent ?? null;
 }
 
-// Overlay the vendored title + ToolAnnotations onto a tool definition loaded
-// from the backend. An up-to-date backend already ships both (its values win);
-// an older deployed backend gets them filled in locally so clients always see
-// read-only/idempotency hints.
+/**
+ * Overlay the vendored title + ToolAnnotations onto a tool definition loaded
+ * from the backend. An up-to-date backend already ships both (its values win);
+ * an older deployed backend gets them filled in locally so clients always see
+ * read-only/idempotency hints.
+ *
+ * @param {Tool} tool
+ * @returns {Tool}
+ */
 function withLocalAnnotations(tool) {
 	const local = TOOL_ANNOTATIONS[tool?.name];
 	if (!local) return tool;
@@ -116,7 +157,7 @@ function withLocalAnnotations(tool) {
  * FALLBACK_TOOLS cover an unreachable backend. Safe to import (tests, embedding
  * this bridge in another process).
  *
- * @returns {Promise<Server>}
+ * @returns {Promise<Server & { threeWsToolCount: number }>}
  */
 export async function buildServer() {
 	const backendTools = await loadTools();
@@ -146,22 +187,19 @@ export async function buildServer() {
 		const { name, arguments: args } = request.params;
 
 		// Native composed tools run in-process (they orchestrate backend reads).
-		if (native.handlers.has(name)) {
+		const nativeHandler = native.handlers.get(name);
+		if (nativeHandler) {
 			try {
-				const data = await native.handlers.get(name)(args || {});
+				const data = await nativeHandler(args || {});
 				return {
 					content: [{ type: 'text', text: JSON.stringify(data) }],
 					structuredContent: data,
 				};
 			} catch (err) {
+				const code = err instanceof ToolError ? err.rpcCode : INTERNAL_ERROR;
 				return {
 					isError: true,
-					content: [
-						{
-							type: 'text',
-							text: `[${err.rpcCode ?? -32603}] ${err.message || 'tool error'}`,
-						},
-					],
+					content: [{ type: 'text', text: `[${code}] ${errorMessage(err) || 'tool error'}` }],
 				};
 			}
 		}
@@ -172,7 +210,7 @@ export async function buildServer() {
 		} catch (err) {
 			return {
 				isError: true,
-				content: [{ type: 'text', text: `Backend request failed: ${err.message}` }],
+				content: [{ type: 'text', text: `Backend request failed: ${errorMessage(err)}` }],
 			};
 		}
 
@@ -206,8 +244,7 @@ export async function buildServer() {
 		return { content: [{ type: 'text', text: JSON.stringify(result ?? null) }] };
 	});
 
-	server.threeWsToolCount = tools.length;
-	return server;
+	return Object.assign(server, { threeWsToolCount: tools.length });
 }
 
 async function main() {
